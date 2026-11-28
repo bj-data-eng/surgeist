@@ -1,9 +1,10 @@
 //! DOM3071 slot algorithms over the canonical immutable/staged owner.
 use crate::internal::store::{check_cancel, reserve};
 use crate::{
-    internal::identity::DocumentId, internal::identity::DomStamp, internal::identity::NodeId,
-    internal::snapshot::DomNode, internal::snapshot::DomNodeKind, internal::snapshot::DomSnapshot,
-    internal::store::DomError, internal::store::DomResource,
+    internal::dialog::DomNearestClickedDialog, internal::identity::DocumentId,
+    internal::identity::DomStamp, internal::identity::NodeId, internal::snapshot::DomNode,
+    internal::snapshot::DomNodeKind, internal::snapshot::DomSnapshot, internal::store::DomError,
+    internal::store::DomResource,
 };
 use std::sync::{Arc, atomic::AtomicBool};
 use surgeist_html::values::DocumentString;
@@ -586,6 +587,63 @@ impl DomFlatTree {
             None => DomFlatRelation::Excluded,
         })
     }
+
+    /// Find the first open Dialog at the target or along its captured flat
+    /// ancestry. An original open modal target needs its actual box bounds.
+    ///
+    /// A target from another node Document must occur in this capture's
+    /// flattened projection. A same-Document excluded target contributes no
+    /// flat parent. The caller qualifies the capture against the pointer route.
+    ///
+    /// `step` admits reached canonical lookups, attribute reads and relation
+    /// visits. The walk scans the recorded rows at most once.
+    pub fn nearest_clicked_dialog_with<E: From<DomError>>(
+        &self,
+        target: NodeId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<DomNearestClickedDialog<'_>, E> {
+        let original = self.source.node_with(target, &mut step)?;
+        let same_document = original.node.document() == self.document;
+        let open_target = original.open_dialog_with(&mut step)?;
+        if same_document && let Some(dialog) = open_target {
+            return DomNearestClickedDialog::at_open_target(dialog, step);
+        }
+
+        // The capture stores each parent before its children. One reverse
+        // scan finds the target and visits each reached ancestor in order.
+        let mut rows = self.nodes.iter().rev();
+        let mut next_parent = loop {
+            let Some(row) = rows.next() else {
+                return if same_document {
+                    Ok(DomNearestClickedDialog::Absent)
+                } else {
+                    Err(DomError::WrongDocument.into())
+                };
+            };
+            step()?;
+            let (node, parent) = *row;
+            if node == target {
+                break parent;
+            }
+        };
+        if let Some(dialog) = open_target {
+            return DomNearestClickedDialog::at_open_target(dialog, step);
+        }
+        for row in rows {
+            let Some(wanted) = next_parent else { break };
+            step()?;
+            let (node, parent) = *row;
+            if node == wanted {
+                let ancestor = self.source.node_with(node, &mut step)?;
+                if let Some(dialog) = ancestor.open_dialog_with(&mut step)? {
+                    return Ok(DomNearestClickedDialog::Found(dialog));
+                }
+                next_parent = parent;
+            }
+        }
+        Ok(DomNearestClickedDialog::Absent)
+    }
+
     pub fn children(&self, node: NodeId) -> Result<impl Iterator<Item = NodeId> + '_, DomError> {
         self.source.node(node)?;
         Ok(self

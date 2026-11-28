@@ -334,6 +334,10 @@ pub const fn surgeist_dom::dialog::DomDialogTaskInfo::toggle(self) -> core::opti
 pub enum surgeist_dom::dialog::DomDialogToggleTaskDisposition
 pub surgeist_dom::dialog::DomDialogToggleTaskDisposition::TargetRetiredDuringDispatch
 pub surgeist_dom::dialog::DomDialogToggleTaskDisposition::TrackerCleared
+pub enum surgeist_dom::dialog::DomNearestClickedDialog<'a>
+pub surgeist_dom::dialog::DomNearestClickedDialog::Absent
+pub surgeist_dom::dialog::DomNearestClickedDialog::Found(surgeist_dom::dialog::DomDialog<'a>)
+pub surgeist_dom::dialog::DomNearestClickedDialog::TargetBoundsRequired(surgeist_dom::dialog::DomDialog<'a>)
 pub enum surgeist_dom::dialog::DomSourceCloseWatcherStep
 pub surgeist_dom::dialog::DomSourceCloseWatcherStep::Action(surgeist_html::internal::elements::dialog::request::HtmlCloseWatcherRequestAction)
 pub surgeist_dom::dialog::DomSourceCloseWatcherStep::SettleInvocation
@@ -3007,6 +3011,7 @@ pub struct surgeist_dom::shadow::DomFlatTree
 impl surgeist_dom::shadow::DomFlatTree
 pub fn surgeist_dom::shadow::DomFlatTree::children(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<impl core::iter::traits::iterator::Iterator<Item = surgeist_dom::identity::NodeId> + '_, surgeist_dom::DomError>
 pub fn surgeist_dom::shadow::DomFlatTree::document(&self) -> surgeist_dom::identity::DocumentId
+pub fn surgeist_dom::shadow::DomFlatTree::nearest_clicked_dialog_with<E: core::convert::From<surgeist_dom::DomError>>(&self, target: surgeist_dom::identity::NodeId, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_dom::dialog::DomNearestClickedDialog<'_>, E>
 pub fn surgeist_dom::shadow::DomFlatTree::nodes(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_dom::identity::NodeId> + '_
 pub fn surgeist_dom::shadow::DomFlatTree::relation(&self, node: surgeist_dom::identity::NodeId) -> core::result::Result<surgeist_dom::shadow::DomFlatRelation, surgeist_dom::DomError>
 pub fn surgeist_dom::shadow::DomFlatTree::source(&self) -> &surgeist_dom::DomSnapshot

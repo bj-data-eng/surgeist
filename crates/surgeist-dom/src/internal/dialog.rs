@@ -2,7 +2,7 @@
 //!
 //! Native Window-manager receipts establish or clear watcher identities through
 //! the original Source hooks. Modal state remains separately qualified.
-use crate::{internal::identity::NodeId, internal::snapshot::DomNode};
+use crate::{internal::identity::NodeId, internal::snapshot::DomNode, internal::store::DomError};
 use surgeist_html::values::DocumentString;
 
 fn require_closed_parsed_dialog<'a>(
@@ -226,5 +226,45 @@ impl<'a> DomNode<'a> {
     pub fn as_dialog(self) -> Option<DomDialog<'a>> {
         self.as_element()?.dialog_state()?;
         Some(DomDialog { node: self })
+    }
+
+    pub(crate) fn open_dialog_with<E: From<DomError>>(
+        self,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomDialog<'a>>, E> {
+        const OPEN: &[u16] = &[b'o' as u16, b'p' as u16, b'e' as u16, b'n' as u16];
+        step()?;
+        let Some(dialog) = self.as_dialog() else {
+            return Ok(None);
+        };
+        let attributes = self.attributes().ok_or(DomError::WrongNodeKind)?;
+        let open = attributes.get_null_namespace_attribute_with(OPEN, step)?;
+        Ok(open.map(|_| dialog))
+    }
+}
+
+/// The canonical structure needed to resolve HTML's nearest clicked Dialog.
+#[derive(Clone, Copy, Debug)]
+pub enum DomNearestClickedDialog<'a> {
+    /// This capture contains no open Dialog on the searched path.
+    Absent,
+    /// The first open Dialog on the path starting at the original target.
+    Found(DomDialog<'a>),
+    /// The original target is itself an open modal. The pointer coordinates
+    /// and bounds of this exact target determine the result. An outside point
+    /// yields absence, and an inside point yields this Dialog.
+    TargetBoundsRequired(DomDialog<'a>),
+}
+impl<'a> DomNearestClickedDialog<'a> {
+    pub(crate) fn at_open_target<E>(
+        target: DomDialog<'a>,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, E> {
+        step()?;
+        Ok(if target.is_modal() {
+            Self::TargetBoundsRequired(target)
+        } else {
+            Self::Found(target)
+        })
     }
 }

@@ -630,3 +630,83 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
         }
     }
 }
+#[test]
+fn actual_modal_needs_bounds_as_target_but_not_as_flat_ancestor() {
+    use surgeist_dom::{
+        dialog::DomNearestClickedDialog::{Absent, Found, TargetBoundsRequired},
+        shadow::DomSlotQueryLimits,
+    };
+
+    let (mut session, top) = headless_top();
+    let document = top.document();
+    let subject = dialog(&mut session, document);
+    edit(
+        &mut session,
+        DomSourceEdit::set_native_attribute(subject, "inert", ""),
+    );
+    let mut calls = Vec::new();
+    assert!(matches!(
+        drive(
+            &mut session,
+            subject,
+            DomSourceEdit::show_modal_dialog(subject),
+            true,
+            &mut calls,
+        ),
+        DomSourceDriveProgress::Complete(_)
+    ));
+    assert_eq!(calls, [true]);
+
+    let mut batch = DomBatch::new();
+    let descendant = batch.create_element_ns(document, Namespace::html(), "span");
+    batch.insert_before(&descendant, subject, None);
+    let descendant = session
+        .dom()
+        .apply(batch, &cancel())
+        .unwrap()
+        .created(&descendant)
+        .unwrap()
+        .unwrap();
+    let tree = session
+        .snapshot()
+        .flat_tree(
+            document,
+            DomSlotQueryLimits::new(64, 64).unwrap(),
+            &cancel(),
+        )
+        .unwrap();
+    let TargetBoundsRequired(modal) = tree
+        .nearest_clicked_dialog_with(subject, || Ok::<_, DomError>(()))
+        .unwrap()
+    else {
+        panic!("the actual open modal target must require its bounds");
+    };
+    assert_eq!(modal.id(), subject);
+    let Found(ancestor) = tree
+        .nearest_clicked_dialog_with(descendant, || Ok::<_, DomError>(()))
+        .unwrap()
+    else {
+        panic!("the original target is a descendant of the open modal");
+    };
+    assert_eq!(ancestor.id(), subject);
+
+    edit(
+        &mut session,
+        DomSourceEdit::remove_attribute(subject, "open"),
+    );
+    let after_removal = session.snapshot();
+    let removed = after_removal.node(subject).unwrap();
+    assert!(removed.as_dialog().unwrap().is_modal());
+    assert_eq!(removed.attribute(&"open".into()), None);
+    let current = after_removal
+        .flat_tree(
+            document,
+            DomSlotQueryLimits::new(64, 64).unwrap(),
+            &cancel(),
+        )
+        .unwrap();
+    assert!(matches!(
+        current.nearest_clicked_dialog_with(subject, || Ok::<_, DomError>(())),
+        Ok(Absent)
+    ));
+}
