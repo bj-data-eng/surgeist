@@ -343,3 +343,70 @@ fn adoption_preserves_files_while_clone_reset_type_change_and_retirement_keep_ex
         &[42]
     );
 }
+
+#[test]
+fn captured_file_missingness_tracks_selected_list_in_ordinary_and_slot_views() {
+    use super::{
+        DomHtmlCapture, DomHtmlCaptureLimits, DomSlotQueryLimits, DomSlotSemanticLimits, capture,
+        fact,
+    };
+    use surgeist_html_semantics::{
+        HtmlInertFactLimits, HtmlLanguageDirectionLimits, HtmlSemanticFact, HtmlSemanticQuery,
+        HtmlSemanticValue,
+    };
+
+    let mut dom = owner();
+    let (document, root, input) = super::setup(&mut dom);
+    let mut batch = DomBatch::new();
+    let slot = batch.create_element_ns(document, Namespace::html(), "slot");
+    batch.insert_before(&slot, root, None);
+    batch.assign_slot(&slot, vec![input.into()]);
+    batch.set_attribute(input, "type", "FILE");
+    batch.set_attribute(input, "required", "");
+    batch.set_attribute(input, "value", "authored.txt");
+    batch.set_attribute(input, "disabled", "");
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+    let empty = capture(&snapshot, document);
+    let missing = |c: &DomHtmlCapture| fact(c, input, HtmlSemanticQuery::InputFileValueMissing);
+    let known = |answer| HtmlSemanticFact::InputFileValueMissing(HtmlSemanticValue::Known(answer));
+    assert_eq!(missing(&empty), known(true));
+    assert_eq!(
+        fact(
+            &empty,
+            input,
+            HtmlSemanticQuery::ConstraintValidationCandidate
+        ),
+        HtmlSemanticFact::ConstraintValidationCandidate(HtmlSemanticValue::Known(false))
+    );
+
+    let selected_files = DomFileList::from_files(vec![file(vec![])]).unwrap();
+    assert!(matches!(
+        assign(&mut dom, input, Some(selected_files), 16_000_000).unwrap(),
+        DomSourceProgress::Complete(_)
+    ));
+    let selected_snapshot = dom.snapshot();
+    assert_ne!(snapshot.stamp(), selected_snapshot.stamp());
+    let selected = capture(&selected_snapshot, document);
+    let supplemented = capture(&selected_snapshot, document)
+        .with_slot_semantics(
+            DomSlotSemanticLimits::new(
+                DomSlotQueryLimits::new(512, 2048).unwrap(),
+                DomHtmlCaptureLimits::new(512, 10000000),
+                HtmlLanguageDirectionLimits::new(1024, 2048, 131072, 10000000),
+                HtmlInertFactLimits::new(1024, 10000000),
+            ),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    assert_eq!(missing(&selected), known(false));
+    assert_eq!(missing(&supplemented), known(false));
+
+    let mut reset = DomBatch::new();
+    reset.reset_input(input);
+    apply(&mut dom, reset);
+    assert_eq!(missing(&capture(&dom.snapshot(), document)), known(true));
+    assert_eq!(missing(&empty), known(true));
+    assert_eq!(missing(&selected), known(false));
+    assert_eq!(missing(&supplemented), known(false));
+}

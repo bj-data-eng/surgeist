@@ -101,15 +101,21 @@ pub(super) fn with_native_state(
             HtmlFormAssociationState::EstablishedCurrent(owner),
         ));
         if let Some(input) = node.as_input() {
-            let flags = input.state().flags();
+            let state = input.state();
+            let flags = state.flags();
             control.reserve(&mut inputs, 1)?;
-            inputs.push(surgeist_html_semantics::HtmlInputControlState::new(
+            let mut observed = surgeist_html_semantics::HtmlInputControlState::new(
                 entry.subject.clone(),
                 Some(flags.checkedness()),
                 Some(flags.dirty_checkedness()),
                 Some(flags.dirty_value()),
                 Some(flags.indeterminate()),
-            ));
+            );
+            if let Some(files) = state.selected_files() {
+                control.charge(1)?;
+                observed = observed.with_file_selection_empty(files.is_empty());
+            }
+            inputs.push(observed);
         }
         if let Some(output) = node.as_output() {
             control.reserve(&mut outputs, 1)?;

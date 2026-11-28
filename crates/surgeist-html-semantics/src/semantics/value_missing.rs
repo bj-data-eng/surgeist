@@ -1,10 +1,37 @@
-//! HTML 877d6146487f §4.10.5.3.4 and §4.10.11: required text missingness.
+//! HTML 877d6146487f §4.10.5.3.4 and §4.10.11: required control missingness.
 //! Observes supplied current values; performs no validation or control mutation.
 
 use super::*;
 use surgeist_html::{attributes::HtmlInputType, vocabulary::KnownHtmlElement};
 
 impl<'a> HtmlSemanticSession<'a> {
+    pub(super) fn input_file_value_missing(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+    ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
+        let kind = self.known(element)?;
+        self.charge(1)?;
+        if kind != Some(KnownHtmlElement::Input) {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let report = self.control_input_type_report(element)?;
+        self.charge(1)?;
+        let state = report
+            .intrinsic()
+            .copied()
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
+        if state != HtmlInputType::File {
+            return Ok(HtmlSemanticValue::Inapplicable);
+        }
+        let required = self.attribute(element, "required")?;
+        self.charge(1)?;
+        if required.is_none() {
+            return Ok(HtmlSemanticValue::Known(false));
+        }
+        self.input_file_selection_empty(subject)
+    }
+
     pub(super) fn input_text_value_missing(
         &mut self,
         subject: &HtmlCaptureSubjectId,

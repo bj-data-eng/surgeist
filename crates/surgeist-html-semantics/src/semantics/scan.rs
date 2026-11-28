@@ -15,9 +15,55 @@ use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits,
     HtmlResource, HtmlWork, aggregate_tariffs, classify,
 };
-use surgeist_html::values::DocumentString;
+use surgeist_html::values::{Attribute, DocumentString};
 use surgeist_html::vocabulary::KnownHtmlElement;
 use surgeist_ledger::{Change, Error, Operation, Scope, Tariff, Tariffs};
+
+/// Scans exact attributes in capture order, charging each reached comparison.
+pub(super) fn attribute_with<'a, E>(
+    element: &'a HtmlCapturedElement,
+    namespace: Option<&str>,
+    local: &str,
+    mut charge: impl FnMut(usize) -> Result<(), E>,
+) -> Result<Option<&'a Attribute>, E> {
+    for attribute in element.attributes().iter() {
+        charge(1)?;
+        let namespace_matches = match (attribute.name().namespace().uri(), namespace) {
+            (None, None) => true,
+            (Some(uri), Some(expected)) if uri.len() == expected.len() => {
+                let mut equal = true;
+                for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
+                    charge(1)?;
+                    if *unit != u16::from(byte) {
+                        equal = false;
+                        break;
+                    }
+                }
+                equal
+            }
+            _ => false,
+        };
+        if !namespace_matches {
+            continue;
+        }
+        let units = attribute.name().local_name().code_units();
+        if units.len() != local.len() {
+            continue;
+        }
+        let mut equal = true;
+        for (unit, byte) in units.iter().zip(local.bytes()) {
+            charge(1)?;
+            if *unit != u16::from(byte) {
+                equal = false;
+                break;
+            }
+        }
+        if equal {
+            return Ok(Some(attribute));
+        }
+    }
+    Ok(None)
+}
 
 /// The namespace URI of HTML elements.
 pub(super) const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";

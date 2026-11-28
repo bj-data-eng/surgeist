@@ -1321,3 +1321,153 @@ fn established_unavailable_association_and_incomplete_reset_parent_remain_missin
         HtmlSemanticFact::FormOwner(HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(_)))
     ));
 }
+
+#[test]
+fn file_missingness_reaches_only_required_qualified_selection() {
+    let (mut builder, document) = builder();
+    let required = element(
+        &mut builder,
+        &document,
+        "input",
+        &[
+            ("type", "FiLe"),
+            ("required", "false"),
+            ("value", "name.txt"),
+        ],
+    );
+    let optional = element(&mut builder, &document, "input", &[("type", "file")]);
+    let text = element(&mut builder, &document, "input", &[("type", " file")]);
+    let svg = builder
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::svg(), None, "input"),
+            OrderedAttributes::new([]).unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    builder
+        .establish_children(
+            &document,
+            &[
+                required.clone(),
+                optional.clone(),
+                text.clone(),
+                svg.clone(),
+            ],
+        )
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let subject = capture.subject_id(&required).unwrap();
+    let text_subject = capture.subject_id(&text).unwrap();
+    let revision = capture.host_facts_revision();
+    let read = |cx: &HtmlSemanticContext, input: &HtmlCaptureBuilderSubject| {
+        query(
+            &capture,
+            cx,
+            input,
+            HtmlSemanticQuery::InputFileValueMissing,
+        )
+        .results()[0]
+            .fact()
+            .clone()
+    };
+    let wrap = HtmlSemanticFact::InputFileValueMissing;
+    let no_facts = context(&capture, None, vec![]);
+    assert_eq!(
+        read(&no_facts, &required),
+        wrap(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::InputFileSelection(subject.clone())
+        ))
+    );
+    assert_eq!(
+        read(&no_facts, &optional),
+        wrap(HtmlSemanticValue::Known(false))
+    );
+    assert_eq!(
+        read(&no_facts, &text),
+        wrap(HtmlSemanticValue::Inapplicable)
+    );
+    assert_eq!(
+        read(&no_facts, &svg),
+        wrap(HtmlSemanticValue::Unsupported(
+            HtmlSemanticUnsupported::ForeignNamespace
+        ))
+    );
+    assert_eq!(
+        read(&no_facts, &document),
+        wrap(HtmlSemanticValue::Inapplicable)
+    );
+
+    let records = |id, empty| HtmlControlFactRecords {
+        inputs: vec![
+            HtmlInputControlState::new(id, None, None, None, None).with_file_selection_empty(empty),
+        ],
+        ..HtmlControlFactRecords::default()
+    };
+    let generous = HtmlControlFactsLimits::new(1, 10_000);
+    for empty in [true, false] {
+        let qualified = HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(subject.clone(), empty),
+            generous,
+        )
+        .unwrap();
+        assert_eq!(
+            read(&context(&capture, Some(qualified), vec![]), &required),
+            wrap(HtmlSemanticValue::Known(empty))
+        );
+    }
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(text_subject.clone(), true),
+            generous
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::InapplicableSubject(text_subject)
+    );
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            HtmlHostFactsRevision::fresh(),
+            records(subject.clone(), true),
+            generous
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::HostRevisionMismatch
+    );
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(subject.clone(), true),
+            HtmlControlFactsLimits::new(0, 10_000)
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::RecordCapacity {
+            limit: 0,
+            required: 1
+        }
+    );
+    assert!(matches!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(subject, true),
+            HtmlControlFactsLimits::new(1, 0)
+        ),
+        Err(HtmlControlFactsError::ValidationWork { limit: 0, .. })
+    ));
+
+    let (foreign_builder, foreign_document) = self::builder();
+    let foreign_capture = foreign_builder.finish().unwrap();
+    let foreign = foreign_capture.subject_id(&foreign_document).unwrap();
+    assert_eq!(
+        HtmlControlFacts::new(&capture, revision.clone(), records(foreign, true), generous)
+            .unwrap_err(),
+        HtmlControlFactsError::Capture(HtmlCaptureError::ForeignCapture)
+    );
+}
