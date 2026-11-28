@@ -315,6 +315,15 @@ pub(crate) fn find_slot<T: Tree>(
     if open && state.mode() == surgeist_html::construction::HtmlShadowRootMode::Closed {
         return Ok(None);
     }
+    if state.is_select_root() {
+        let slots = SelectSlots::read(tree, root, cancel)?;
+        let button = first_element_button(tree, parent, cancel)?;
+        return Ok(Some(if button == Some(node) {
+            slots.button
+        } else {
+            slots.content
+        }));
+    }
     if state.slot_assignment() != surgeist_html::construction::HtmlSlotAssignment::Manual {
         return tree.named_slot(root, node, &mut || tree.step(cancel));
     }
@@ -375,7 +384,22 @@ pub(crate) fn visit_slottables<T: Tree>(
         return Ok(());
     };
     let host = rn.host.ok_or(DomError::StaleNode)?;
-    if state.slot_assignment() == surgeist_html::construction::HtmlSlotAssignment::Manual {
+    if state.is_select_root() {
+        let slots = SelectSlots::read(tree, r, cancel)?;
+        let button = first_element_button(tree, host, cancel)?;
+        if slot == slots.button {
+            if let Some(button) = button {
+                visit(button)?;
+            }
+        } else if slot == slots.content {
+            for child in tree.get(host)?.children.iter() {
+                tree.step(cancel)?;
+                if Some(child) != button && is_slottable(tree.get(child)?.kind) {
+                    visit(child)?;
+                }
+            }
+        }
+    } else if state.slot_assignment() == surgeist_html::construction::HtmlSlotAssignment::Manual {
         for node in tree.get(slot)?.manual.iter() {
             tree.step(cancel)?;
             if tree.get(node)?.parent == Some(host) {
@@ -386,6 +410,41 @@ pub(crate) fn visit_slottables<T: Tree>(
         tree.named_light(slot, host, &mut || tree.step(cancel), visit)?;
     }
     Ok(())
+}
+
+pub(in crate::internal) struct SelectSlots<Key> {
+    pub button: Key,
+    pub content: Key,
+}
+
+impl<Key: Copy + Eq> SelectSlots<Key> {
+    pub(in crate::internal) fn read<T: Tree<Key = Key>>(
+        tree: &T,
+        root: Key,
+        cancel: &AtomicBool,
+    ) -> Result<Self, DomError> {
+        tree.step(cancel)?;
+        let root = tree.get(root)?;
+        Ok(Self {
+            button: root.children.first().ok_or(DomError::StaleNode)?,
+            content: root.children.get(1).ok_or(DomError::StaleNode)?,
+        })
+    }
+}
+
+pub(in crate::internal) fn first_element_button<T: Tree>(
+    tree: &T,
+    host: T::Key,
+    cancel: &AtomicBool,
+) -> Result<Option<T::Key>, DomError> {
+    tree.step(cancel)?;
+    for child in tree.get(host)?.children.iter() {
+        tree.step(cancel)?;
+        if let TreeKind::Element(element) = tree.get(child)?.kind {
+            return Ok(element.button_state().is_some().then_some(child));
+        }
+    }
+    Ok(None)
 }
 
 /// Logical result/scratch reference admission, independent of allocator RSS.

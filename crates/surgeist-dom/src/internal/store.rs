@@ -3437,6 +3437,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.initialize_template_contents(key, limits, cancel)?;
+        self.initialize_select_shadow(key, limits, cancel)?;
         if self.node(key)?.hyperlink().is_some() {
             self.set_hyperlink_url(key, None, limits, cancel)?;
         }
@@ -3823,12 +3824,11 @@ impl Draft {
                 if let Some(map) = &self.phase_map
                     && let Some(index) = map.ids.original(id)
                 {
-                    let key = Key::Created(index);
-                    self.node(key)?;
-                    return Ok(key);
+                    Key::Created(index)
+                } else {
+                    self.base.node(self.store, id)?;
+                    Key::Existing(id)
                 }
-                self.base.node(self.store, id)?;
-                Key::Existing(id)
             }
             NodeOperand::Created(CreatedNode { owner, index })
             | NodeOperand::AttachedShadowRoot(AttachedShadowRoot { owner, index }) => {
@@ -3843,7 +3843,9 @@ impl Draft {
                     .ok_or(DomError::UnavailableCreation)?
             }
         };
-        self.node(key)?;
+        if self.node(key)?.common().ua_owned {
+            return Err(DomError::NotSupported);
+        }
         Ok(key)
     }
     fn remove(
@@ -4010,6 +4012,7 @@ impl Draft {
                 document,
                 relevant_global,
                 parent: None,
+                ua_owned: false,
             },
             key,
             self,

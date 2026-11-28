@@ -641,6 +641,7 @@ impl Draft {
             document: map(value.document),
             relevant_global: value.relevant_global,
             parent: value.parent.map(map),
+            ua_owned: value.ua_owned,
         };
         macro_rules! root {
             ($constructor:expr, $ty:ty, $value:expr, $dependency:expr) => {{

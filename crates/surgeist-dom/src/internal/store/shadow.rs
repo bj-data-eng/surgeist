@@ -1,8 +1,69 @@
 use super::transaction::KindRead;
 use super::tree::AfterRemovingChildren;
 use super::*;
+use surgeist_html::values::{Namespace, QualifiedName};
 
 impl Draft {
+    pub(super) fn initialize_select_shadow(
+        &mut self,
+        host: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let host_node = self.node(host)?;
+        if !matches!(host_node.kind(), KindRead::Element(element) if element.select_state().is_some())
+        {
+            return Ok(());
+        }
+        let document = host_node.document();
+        let global = host_node.relevant_global();
+        let environment = self.document_metadata(document)?.document_environment();
+        let root = self.allocate(
+            NewNode::ShadowRoot(crate::internal::shadow::DomShadowRootState::for_select()),
+            document,
+            limits,
+            cancel,
+        )?;
+        let mut common = self.common_fields_mut(root, cancel)?;
+        common.relevant_global = global;
+        common.ua_owned = true;
+        common.commit(cancel)?;
+        self.link_shadow_root(host, root, cancel)?;
+
+        let mut internal_element = |name: &str| {
+            let name = QualifiedName::new(Namespace::html(), None, name);
+            let formed = self.form_authored_element(&name, environment.clone(), None, cancel)?;
+            let key = self.allocate_element_formed(formed, document, limits, cancel, None)?;
+            let mut common = self.common_fields_mut(key, cancel)?;
+            common.relevant_global = global;
+            common.ua_owned = true;
+            common.commit(cancel)?;
+            Ok::<_, DomError>(key)
+        };
+        let button_slot = internal_element("slot")?;
+        let fallback = internal_element("div")?;
+        let content_slot = internal_element("slot")?;
+
+        for (child, parent) in [
+            (button_slot, root),
+            (fallback, button_slot),
+            (content_slot, root),
+        ] {
+            let index = self.node(parent)?.children().len();
+            self.relations_insert(
+                parent,
+                transaction::RelationField::Children,
+                index,
+                &[child],
+                cancel,
+            )?;
+            let mut common = self.common_fields_mut(child, cancel)?;
+            common.parent = Some(parent);
+            common.commit(cancel)?;
+        }
+        self.assign_tree(root, limits, cancel)
+    }
+
     /// Transfers a qualified retained attachment rather than replaying native
     /// creation or descendant insertion. The populated tree's slot relation is
     /// recomputed against the actual host's current children at this join.
@@ -15,6 +76,9 @@ impl Draft {
     ) -> Result<(), DomError> {
         self.source_step(cancelled)?;
         let host_node = self.node(host)?;
+        if host_node.common().ua_owned {
+            return Err(DomError::NotSupported);
+        }
         if !matches!(host_node.kind(), KindRead::Element(_)) {
             return Err(DomError::WrongNodeKind);
         }
@@ -36,12 +100,7 @@ impl Draft {
             }
             current = self.host_including_parent(key)?;
         }
-        let mut relation = self.host_mut(root, cancelled)?;
-        *relation = Some(host);
-        relation.commit(cancelled)?;
-        let mut relation = self.shadow_root_mut(host, cancelled)?;
-        *relation = Some(root);
-        relation.commit(cancelled)?;
+        self.link_shadow_root(host, root, cancelled)?;
         // Attachment is not an ordinary insertion: no Style/Details/control
         // insertion hooks or adoption run for the retained descendant state.
         self.assign_tree(root, limits, cancelled)
@@ -204,13 +263,23 @@ impl Draft {
     ) -> Result<Key, DomError> {
         let state = crate::internal::shadow::DomShadowRootState::native(init, registry);
         let root = self.allocate(NewNode::ShadowRoot(state), document, limits, cancelled)?;
+        self.link_shadow_root(host, root, cancelled)?;
+        Ok(root)
+    }
+
+    fn link_shadow_root(
+        &mut self,
+        host: Key,
+        root: Key,
+        cancelled: &AtomicBool,
+    ) -> Result<(), DomError> {
         let mut relation = self.host_mut(root, cancelled)?;
         *relation = Some(host);
         relation.commit(cancelled)?;
         let mut relation = self.shadow_root_mut(host, cancelled)?;
         *relation = Some(root);
         relation.commit(cancelled)?;
-        Ok(root)
+        Ok(())
     }
 
     fn shadow_name_is(
