@@ -626,6 +626,88 @@ fn active_dialog_open_requires_eventful_watcher_without_atomic_publication() {
 }
 
 #[test]
+fn adopted_dialog_open_hook_uses_current_document_activity_with_original_global() {
+    let mut fixture = HostedFixture::active();
+    let mut hosted = fixture.session.hosted_execution();
+    let other_host = hosted
+        .create_host(&mut fixture.session.dom(), &cancel())
+        .unwrap();
+    let active = hosted
+        .create_top_level(&mut fixture.session.dom(), other_host, &cancel())
+        .unwrap();
+    let retired = fixture.top;
+    let from_retired = create(&mut fixture, retired.document(), "dialog");
+    let from_active = create(&mut fixture, active.document(), "dialog");
+    let active_body = super::support::body(&fixture.session.snapshot(), active.document());
+    fixture.retire();
+    let mut exchange = DomBatch::new();
+    exchange.adopt(from_retired, active.document());
+    exchange.insert_before(from_retired, active_body, None);
+    exchange.adopt(from_active, retired.document());
+    exchange.insert_before(from_active, fixture.body, None);
+    apply(&mut fixture, exchange);
+    let basis = fixture.session.snapshot();
+    for (subject, original, destination, expected_activity) in [
+        (from_retired, retired, active, true),
+        (from_active, active, retired, false),
+    ] {
+        assert_eq!(
+            basis.node(subject).unwrap().owner_document(),
+            Some(destination.document())
+        );
+        assert_eq!(
+            basis.relevant_global(subject).unwrap(),
+            Some(original.global())
+        );
+        assert_eq!(
+            basis
+                .document(destination.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap(),
+            expected_activity
+        );
+        assert_eq!(
+            basis
+                .document(original.document())
+                .unwrap()
+                .is_fully_active()
+                .unwrap(),
+            !expected_activity
+        );
+    }
+
+    let mut open = DomBatch::new();
+    open.set_attribute(from_retired, "open", "");
+    assert_eq!(
+        fixture.session.dom().apply(open, &cancel()).unwrap_err(),
+        DomError::NeedsEventfulOperation {
+            subject: Some(from_retired),
+            action: HtmlDialogAction::EstablishCloseWatcher,
+        }
+    );
+    assert_eq!(fixture.session.snapshot().stamp(), basis.stamp());
+    assert_eq!(
+        basis.node(from_retired).unwrap().attribute(&"open".into()),
+        None
+    );
+    let mut open = DomBatch::new();
+    open.set_attribute(from_active, "open", "");
+    apply(&mut fixture, open);
+    let after = fixture.session.snapshot();
+    assert_eq!(
+        after.node(from_active).unwrap().attribute(&"open".into()),
+        Some(&"".into())
+    );
+    assert_eq!(
+        after.node(from_active).unwrap().parent(),
+        Some(fixture.body)
+    );
+    no_dialog_services(&after, from_active);
+    assert!(after.incomplete_source_operation().is_none());
+}
+
+#[test]
 fn standalone_img_adopted_into_retired_document_waits_before_resources_and_supersedes_exactly() {
     let mut fixture = HostedFixture::retired();
     let closed = fixture.closed;
