@@ -1178,7 +1178,8 @@ fn manipulation_error(
         | Error::OutOfOrderTransfer
         | Error::PretransferredSession
         | Error::Dispatch(_)
-        | Error::SourceEvent(_) => DomHostedRuntimeError::Protocol,
+        | Error::SourceEvent(_)
+        | Error::SelectNotificationSource(_) => DomHostedRuntimeError::Protocol,
     }
 }
 /// One actual Document/Global generation's cleanup evidence. A reserved row is

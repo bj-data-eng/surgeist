@@ -70,6 +70,8 @@ pub use target::{DomEventTarget, DomStandaloneEventTarget};
 mod passive;
 use passive::{BorrowedPassive, PassiveScope};
 
+use surgeist_html::bounded::select::HtmlSelectNotificationEvent;
+
 /// Scoped access to the original canonical DOM. The mutable owner cannot be
 /// extracted or replaced. A fresh reborrow is supplied to every listener.
 pub struct DomEventDom<'a> {
@@ -2151,6 +2153,7 @@ enum EventData {
     FormReset,
     TextSelection,
     FileSelection(FileSelectionEvent),
+    SelectNotification(HtmlSelectNotificationEvent),
     DialogCancel {
         cancelable: bool,
     },
@@ -2194,6 +2197,7 @@ pub(crate) enum NativeEventCause {
     FormReset,
     TextSelection,
     FileSelection(FileSelectionEvent),
+    SelectNotification(HtmlSelectNotificationEvent),
     SignalAbort,
     #[cfg(feature = "document-scripting")]
     CspViolation,
@@ -2218,8 +2222,10 @@ impl NativeEventCause {
             Self::DialogClose => DomEventType::CLOSE,
             Self::FormReset => DomEventType::RESET,
             Self::TextSelection => DomEventType::SELECT,
-            Self::FileSelection(FileSelectionEvent::Input) => DomEventType::INPUT,
-            Self::FileSelection(FileSelectionEvent::Change) => DomEventType::CHANGE,
+            Self::FileSelection(FileSelectionEvent::Input)
+            | Self::SelectNotification(HtmlSelectNotificationEvent::Input) => DomEventType::INPUT,
+            Self::FileSelection(FileSelectionEvent::Change)
+            | Self::SelectNotification(HtmlSelectNotificationEvent::Change) => DomEventType::CHANGE,
             Self::SignalAbort => DomEventType::ABORT,
             #[cfg(feature = "document-scripting")]
             Self::CspViolation => DomEventType::CSP_VIOLATION,
@@ -2876,6 +2882,15 @@ impl EventInvocationOwner {
                     ..default_init
                 },
             ),
+            EventData::SelectNotification(event) => (
+                NativeEventCause::SelectNotification(event),
+                EventPayload::None,
+                DomEventInit {
+                    bubbles: event.bubbles(),
+                    cancelable: event.cancelable(),
+                    composed: event.composed(),
+                },
+            ),
             EventData::DialogCancel { cancelable } => (
                 NativeEventCause::DialogCancel,
                 EventPayload::None,
@@ -3283,6 +3298,20 @@ impl NativeDomEvent {
         backing: EventBodyCustody,
     ) -> EventInvocationOwner {
         EventInvocationOwner::new(target, EventData::FileSelection(event), creation, backing)
+    }
+
+    pub(crate) fn select_notification(
+        target: NodeId,
+        event: HtmlSelectNotificationEvent,
+        creation: Result<EventCreation, DomEventTimestampUnavailable>,
+        backing: EventBodyCustody,
+    ) -> EventInvocationOwner {
+        EventInvocationOwner::new(
+            target,
+            EventData::SelectNotification(event),
+            creation,
+            backing,
+        )
     }
 
     /// Actual null-source Dialog toggle task payload, including equal states.

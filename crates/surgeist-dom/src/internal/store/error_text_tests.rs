@@ -880,6 +880,21 @@ fn rows() -> Vec<(&'static str, DomError, &'static str)> {
             "the Input cannot accept this user file selection",
         ),
         (
+            "SelectNotificationTaskSourceUnavailable",
+            DomError::SelectNotificationTaskSourceUnavailable,
+            "the Select user notification task source is unavailable",
+        ),
+        (
+            "StaleSelectUserAction",
+            DomError::StaleSelectUserAction,
+            "the Select user action observation is stale",
+        ),
+        (
+            "SelectUserActionInapplicable",
+            DomError::SelectUserActionInapplicable,
+            "the Select cannot accept a user toggle for this Option",
+        ),
+        (
             "ObjectHostedTransitionUnavailable",
             DomError::ObjectHostedTransitionUnavailable,
             "the Object element's reached hosted representation transition is unavailable",
@@ -1236,6 +1251,9 @@ variants! {
     FileSelectionTaskSourceUnavailable unit,
     StaleFileSelection unit,
     FileSelectionInapplicable unit,
+    SelectNotificationTaskSourceUnavailable unit,
+    StaleSelectUserAction unit,
+    SelectUserActionInapplicable unit,
     ObjectHostedTransitionUnavailable unit,
     ImageUpdateExhausted unit,
     HyperlinkProcessingUnavailable unit,

@@ -38,7 +38,10 @@ use surgeist_runtime::{
     event::{DomEventDispatchError, DomEventResource},
     hosted::DomHostedRuntimeError,
     session::DomSessionCreateFailure,
-    source::{DomSourceEventResource, DomSourceEventRuntimeError, DomSourceRuntimeError},
+    source::{
+        DomSourceDriveError, DomSourceEventResource, DomSourceEventRuntimeError,
+        DomSourceRuntimeError,
+    },
     style::parsed::DomStyleParsedTerminalError,
     style::{DomConstructedSheetError, DomStyleRuntimeError},
     trusted_types_csp::PolicyListCapacity,
@@ -212,6 +215,12 @@ fn element_task_errors_state_the_refused_operation() {
                 "the Source event executor refused the element-task step",
             ),
             (
+                DomElementTaskRuntimeError::SelectNotificationSource(Box::new(
+                    DomSourceDriveError::Source(DomSourceRuntimeError::Dom(some_dom_error())),
+                )),
+                "the selectedcontent Source operation refused the notification step",
+            ),
+            (
                 DomElementTaskRuntimeError::Hosted(DomHostedRuntimeError::Busy),
                 "the native hosted lifecycle refused the element-task operation",
             ),
@@ -227,7 +236,8 @@ fn element_task_errors_state_the_refused_operation() {
             DomElementTaskRuntimeError::IdentityExhausted => 7,
             DomElementTaskRuntimeError::Dispatch(_) => 8,
             DomElementTaskRuntimeError::SourceEvent(_) => 9,
-            DomElementTaskRuntimeError::Hosted(_) => 10,
+            DomElementTaskRuntimeError::SelectNotificationSource(_) => 10,
+            DomElementTaskRuntimeError::Hosted(_) => 11,
         },
         |error| {
             matches!(
@@ -235,6 +245,7 @@ fn element_task_errors_state_the_refused_operation() {
                 DomElementTaskRuntimeError::Dom(_)
                     | DomElementTaskRuntimeError::Dispatch(_)
                     | DomElementTaskRuntimeError::SourceEvent(_)
+                    | DomElementTaskRuntimeError::SelectNotificationSource(_)
                     | DomElementTaskRuntimeError::Hosted(_)
             )
         },
@@ -249,6 +260,11 @@ fn element_task_errors_state_the_refused_operation() {
     assert_chains(
         &DomElementTaskRuntimeError::SourceEvent(DomSourceEventRuntimeError::Busy),
         &DomSourceEventRuntimeError::Busy,
+    );
+    let refused = DomSourceDriveError::Source(DomSourceRuntimeError::Dom(some_dom_error()));
+    assert_chains(
+        &DomElementTaskRuntimeError::SelectNotificationSource(Box::new(refused)),
+        &DomSourceDriveError::Source(DomSourceRuntimeError::Dom(some_dom_error())),
     );
     assert_chains(
         &DomElementTaskRuntimeError::Hosted(DomHostedRuntimeError::Busy),

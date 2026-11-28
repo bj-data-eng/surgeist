@@ -61,6 +61,7 @@ enum OperationRoot {
     NativeInstallation,
     CustomElementUpgrade(NodeId),
     SelectCompletion(NodeId),
+    SelectNotificationContent(crate::internal::element_tasks::DomElementTaskId),
     DialogTask(crate::internal::store::source::operation::dialog_queue::DomDialogTaskInfo),
     #[cfg(test)]
     Commands(Vec<Command>),
@@ -82,6 +83,7 @@ impl std::ops::Deref for OperationRoot {
             Self::NativeInstallation
             | Self::CustomElementUpgrade(_)
             | Self::SelectCompletion(_)
+            | Self::SelectNotificationContent(_)
             | Self::DialogTask(_) => &[],
             #[cfg(test)]
             Self::Commands(commands) => commands,
@@ -248,6 +250,7 @@ impl Drop for DomSourceLease<'_> {
     fn drop(&mut self) {
         if !self.complete && self.dom.source_operation.as_ref().is_some_and(|o| {
             !o.published
+                && !matches!(o.commands, OperationRoot::SelectNotificationContent(_))
                 && !o.event_exposed
                 && !o.script_parked
                     && o.meta_csp.is_none()
@@ -508,6 +511,15 @@ impl Dom {
         {
             return Err(DomError::StaleFileSelection);
         }
+        if let [
+            Command::Compound(crate::internal::compound::Edit::UserSelectToggle {
+                observed, ..
+            }),
+        ] = &*commands
+            && (observed.owner != self.owner || observed.revision != self.revision)
+        {
+            return Err(DomError::StaleSelectUserAction);
+        }
         let mut intake = Intake {
             commands,
             file_argument_custody: None,
@@ -718,11 +730,12 @@ impl Dom {
         {
             return Err(DomError::InvalidNativeTask);
         }
-        if self
-            .source_operation
-            .as_ref()
-            .is_some_and(|operation| matches!(operation.commands, OperationRoot::DialogTask(_)))
-        {
+        if self.source_operation.as_ref().is_some_and(|operation| {
+            matches!(
+                operation.commands,
+                OperationRoot::DialogTask(_) | OperationRoot::SelectNotificationContent(_)
+            )
+        }) {
             return Err(DomError::InvalidSourceOperation);
         }
         self.resume_source_permission(id, limits, cancel)
@@ -1153,6 +1166,11 @@ impl Operation {
                 targets: select
                     .targets
                     .try_map(|key| self.draft.resolve(key.into()))?,
+            }
+        } else if let OperationRoot::SelectNotificationContent(task) = self.commands {
+            let select = self.draft.resolve(task.target().into())?;
+            headroom::Entry::Select {
+                targets: crate::internal::select::TaskTargets::whole(select),
             }
         } else if let Some(installation) = &self.installation {
             headroom::Entry::Native {
@@ -1986,8 +2004,14 @@ impl Operation {
             return Err(DomError::StyleProtocol.into());
         }
         let owner_custody = dom.source_owner_custody_bytes()?;
+        let route = if matches!(self.commands, OperationRoot::SelectNotificationContent(_)) {
+            super::reactions::ReactionRoute::Backup
+        } else {
+            super::reactions::ReactionRoute::Operation(self.id)
+        };
         let insertions = self.draft.prepare_custom_element_reactions(
             self.id,
+            route,
             &prepared.allocation_ids,
             cancel,
         )?;
@@ -2189,10 +2213,11 @@ impl DomSourceLease<'_> {
     }
     pub fn request_cancel(&mut self) {
         let op = self.dom.source_operation.as_mut().expect("live lease");
-        if op
-            .custom_element
-            .as_ref()
-            .is_some_and(custom_element::Pending::callback_opened)
+        if matches!(op.commands, OperationRoot::SelectNotificationContent(_))
+            || op
+                .custom_element
+                .as_ref()
+                .is_some_and(custom_element::Pending::callback_opened)
             || matches!(&op.draft, dialog::OperationDraft::AttributeObserved(observation) if !observation.work.scope_closed())
             || op
                 .attribute_verification
@@ -2342,19 +2367,18 @@ impl DomSourceLease<'_> {
             .expect("qualified original operation")
             .entry_scope
             .seal();
-        if self
-            .dom
-            .source_operation
-            .as_ref()
-            .is_some_and(|operation| matches!(operation.commands, OperationRoot::DialogTask(_)))
-            && !self.task_authorization.as_ref().is_some_and(|binding| {
-                self.dom
-                    .element_tasks
-                    .as_ref()
-                    .and_then(std::sync::Weak::upgrade)
-                    .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
-            })
-        {
+        if self.dom.source_operation.as_ref().is_some_and(|operation| {
+            matches!(
+                operation.commands,
+                OperationRoot::DialogTask(_) | OperationRoot::SelectNotificationContent(_)
+            )
+        }) && !self.task_authorization.as_ref().is_some_and(|binding| {
+            self.dom
+                .element_tasks
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .is_some_and(|actual| Arc::ptr_eq(binding, &actual))
+        }) {
             return Err(DomError::InvalidSourceOperation.into());
         }
         // Independent public capabilities may commit concurrently. Keep the
@@ -2670,6 +2694,13 @@ impl DomSourceLease<'_> {
                     let targets = select.targets.try_map(|key| op.draft.resolve(key.into()))?;
                     op.draft
                         .schedule_select_task(targets, self.dom.limits, cancel)
+                } else if !op.started
+                    && !op.cancelled
+                    && let OperationRoot::SelectNotificationContent(id) = op.commands
+                {
+                    let target = op.draft.resolve(id.target().into())?;
+                    op.draft
+                        .schedule_selectedcontent(target, self.dom.limits, cancel)
                 } else if !op.started
                     && !op.cancelled
                     && let Some(installation) = &op.installation

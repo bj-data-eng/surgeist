@@ -587,6 +587,7 @@ impl<'dom> DomSourceLease<'dom> {
             }
             let insertions = op.draft.prepare_custom_element_reactions(
                 op.id,
+                crate::internal::store::source::reactions::ReactionRoute::Operation(op.id),
                 &prepared.allocation_ids,
                 cancel,
             )?;

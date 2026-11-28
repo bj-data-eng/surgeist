@@ -2532,6 +2532,23 @@ impl DomDocumentScriptRegistration {
             .map_or(Ok(None), |inbox| inbox.next_receiver(route, work_remaining))
     }
 
+    /// Discover whether the original backup queue has a ready element position.
+    /// This spends inspection work and leaves the queue unchanged.
+    pub fn has_backup_custom_element_reactions(
+        &self,
+        work_remaining: &mut u64,
+    ) -> Result<bool, crate::internal::store::DomError> {
+        if !self.is_active() {
+            return Err(crate::internal::store::DomError::HostedSourceUnavailable);
+        }
+        self.0
+            .custom_element_reactions
+            .get()
+            .map_or(Ok(false), |inbox| {
+                inbox.has_backup_receivers(work_remaining)
+            })
+    }
+
     /// Loan the oldest pending routed reaction for the receiver. Taking or
     /// acknowledging it leaves the element's queue positions intact.
     /// The supplied work allowance is reduced for inspected entries.

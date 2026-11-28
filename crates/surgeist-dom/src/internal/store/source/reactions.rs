@@ -238,6 +238,20 @@ impl Inbox {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    pub(crate) fn has_backup_receivers(&self, work_remaining: &mut u64) -> Result<bool, DomError> {
+        for slot in self.lock().iter() {
+            charge_inspection(work_remaining)?;
+            if slot.route == ReactionRoute::Backup {
+                match &*slot.lock() {
+                    SlotState::Ready(batch) if batch.cursor < batch.facts.len() => return Ok(true),
+                    SlotState::Loaned => return Err(DomError::InvalidSourceOperation),
+                    SlotState::Ready(_) | SlotState::Settled => {}
+                }
+            }
+        }
+        Ok(false)
+    }
+
     pub(crate) fn take(
         &self,
         operation: crate::internal::source::DomSourceOperationId,
@@ -917,6 +931,7 @@ impl Draft {
     pub(in crate::internal::store) fn prepare_custom_element_reactions(
         &self,
         operation: crate::internal::source::DomSourceOperationId,
+        route: ReactionRoute,
         ids: &AllocationIds,
         cancel: &AtomicBool,
     ) -> Result<Option<Publication>, DomError> {
@@ -983,13 +998,18 @@ impl Draft {
         let slot_backing = budget.fork();
         slot_backing.retain_bytes(size_of::<Slot>() + 4 * size_of::<usize>(), cancel)?;
         let mut batches = LinkedList::new();
+        let routed_pending = if matches!(route, ReactionRoute::Operation(_)) {
+            0
+        } else {
+            facts.len()
+        };
         batches.push_back(formation::allocated_arc(Slot {
             operation,
-            route: ReactionRoute::Operation(operation),
+            route,
             state: Mutex::new(SlotState::Ready(Batch {
                 facts,
                 cursor: 0,
-                routed_pending: 0,
+                routed_pending,
                 _backing: budget.into_debit(),
                 _strings: strings,
             })),

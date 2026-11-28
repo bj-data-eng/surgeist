@@ -210,6 +210,13 @@ impl Families {
             .get(select)
             .map_or_else(RootHeader::default, |group| group.members)
     }
+    pub fn option_owner(
+        &self,
+        option: Key,
+        step: &mut impl FnMut() -> Result<(), DomError>,
+    ) -> Result<Option<Key>, DomError> {
+        self.current.index.option_owner_with(option, step)
+    }
     pub fn targets(&self, select: Key) -> RootHeader {
         self.current
             .index
@@ -425,18 +432,24 @@ impl FamilyIndex {
         option: NodeId,
         step: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<NodeId>, E> {
-        let key = Key::Existing(option);
+        match self.option_owner_with(Key::Existing(option), step)? {
+            Some(Key::Existing(select)) => Ok(Some(select)),
+            None => Ok(None),
+            Some(Key::Created(_)) => Err(DomError::SelectProtocol.into()),
+        }
+    }
+    fn option_owner_with<E: From<DomError>>(
+        &self,
+        key: Key,
+        step: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Key>, E> {
         self.qualified(key)?;
         let fact = self
             .facts
             .get_with(key, step)?
             .filter(|fact| fact.kind == Kind::Option)
             .ok_or(DomError::SelectProtocol)?;
-        match fact.select {
-            Some(Key::Existing(select)) => Ok(Some(select)),
-            None => Ok(None),
-            Some(Key::Created(_)) => Err(DomError::SelectProtocol.into()),
-        }
+        Ok(fact.select)
     }
     pub fn option_index_with<E: From<DomError>>(
         &self,

@@ -23,6 +23,6 @@ pub use crate::internal::select::{
 pub use crate::internal::store::source::operation::element_queue::{
     DomFileSelectionTask, DomFileSelectionTaskInfo, DomObjectRepresentationTask,
     DomObjectRepresentationTaskInfo, DomQueuedSourceElementTask, DomQueuedSourceElementTasks,
-    DomSourceElementTaskInfo, DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest,
-    DomTextSelectionTaskInfo,
+    DomSelectNotificationTask, DomSelectNotificationTaskInfo, DomSourceElementTaskInfo,
+    DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest, DomTextSelectionTaskInfo,
 };

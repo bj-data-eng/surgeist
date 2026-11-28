@@ -1551,7 +1551,8 @@ impl DocumentScriptHost {
 
     /// Sample and submit the exact pending Script's relevant settings. A
     /// request for a different Global remains pending and returns None.
-    /// Resuming the original Source exposes its next requirement.
+    /// Resume the original Source edit or Select notification to expose its
+    /// next requirement.
     pub fn service_script_settings(
         &mut self,
         permit: &DocumentScriptPermit,
@@ -1568,19 +1569,49 @@ impl DocumentScriptHost {
             .try_borrow_mut()
             .map_err(|_| DocumentScriptNativeError::Busy)?;
         let hosted = session.hosted_execution();
+        let element_tasks = session.element_task_execution();
         let mut dom = session.dom();
-        let mut lease = dom
-            .resume_source_edit(request.operation(), limits, cancel)
+        let service = |mut lease: surgeist_dom::source::DomSourceLease<'_>| {
+            Self::sample_script_source_settings(attachment, &hosted, &mut lease, request, cancel)
+        };
+        match dom.resume_source_edit(request.operation(), limits, cancel) {
+            Ok(lease) => return service(lease).map_err(Into::into),
+            Err(DomError::InvalidSourceOperation) => {}
+            Err(error) => return Err(DocumentScriptNativeError::from(error).into()),
+        }
+        use crate::internal::element_tasks::DomElementTaskRuntimeError as TaskError;
+        let lease = element_tasks
+            .resume_select_notification_source(&mut dom, request.operation(), limits, cancel)
+            .map_err(|error| match error {
+                TaskError::Dom(error) => DocumentScriptNativeError::Dom(error),
+                TaskError::Busy => DocumentScriptNativeError::Busy,
+                TaskError::OwnerDisposed => DocumentScriptNativeError::Revoked,
+                TaskError::Admission => {
+                    DocumentScriptNativeError::Hosted(DomHostedRuntimeError::Admission)
+                }
+                TaskError::IdentityExhausted => DocumentScriptNativeError::RepresentationExhausted,
+                _ => DocumentScriptNativeError::SourceAccess,
+            })?
+            .ok_or(DomError::InvalidSourceOperation)
             .map_err(DocumentScriptNativeError::from)?;
-        lease
-            .source_script_step(request, cancel)
-            .map_err(DocumentScriptNativeError::from)?;
+        service(lease).map_err(Into::into)
+    }
+
+    fn sample_script_source_settings(
+        attachment: &Attachment,
+        hosted: &HostedRuntime,
+        lease: &mut surgeist_dom::source::DomSourceLease<'_>,
+        request: surgeist_dom::script::DomSourceScriptRequest,
+        cancel: &AtomicBool,
+    ) -> Result<Option<surgeist_dom::script::DomSourceScriptSettings>, DocumentScriptNativeError>
+    {
+        lease.source_script_step(request, cancel)?;
         if request.relevant_global() != Some(attachment.target.global()) {
             return Ok(None);
         }
         let settings = hosted
             .with_script_source_settings(
-                &mut lease,
+                lease,
                 attachment.target,
                 request,
                 cancel,

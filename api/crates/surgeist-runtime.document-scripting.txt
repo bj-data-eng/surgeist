@@ -446,6 +446,7 @@ impl surgeist_runtime::document_scripting::DocumentScriptHost
 pub fn surgeist_runtime::document_scripting::DocumentScriptHost::run_attached_csp_violation_task(&mut self, permit: &surgeist_runtime::document_scripting::DocumentScriptPermit, limits: surgeist_runtime::event::DomEventDispatchLimits) -> core::result::Result<surgeist_runtime::document_scripting::DocumentCspViolationProgress, surgeist_runtime::document_scripting::DocumentScriptEventError>
 impl surgeist_runtime::document_scripting::DocumentScriptHost
 pub fn surgeist_runtime::document_scripting::DocumentScriptHost::run_attached_element_task(&mut self, permit: &surgeist_runtime::document_scripting::DocumentScriptPermit, source: surgeist_dom::internal::element_tasks::DomElementTaskSourceKind, limits: surgeist_runtime::element_task::DomElementTaskRunLimits) -> core::result::Result<surgeist_runtime::element_task::DomElementTaskProgress, surgeist_runtime::document_scripting::DocumentScriptEventError>
+pub fn surgeist_runtime::document_scripting::DocumentScriptHost::run_attached_element_task_with_source_services(&mut self, permit: &surgeist_runtime::document_scripting::DocumentScriptPermit, source: surgeist_dom::internal::element_tasks::DomElementTaskSourceKind, limits: surgeist_runtime::element_task::DomElementTaskRunLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>) -> core::result::Result<surgeist_runtime::element_task::DomElementTaskProgress, surgeist_runtime::document_scripting::DocumentScriptEventError>
 impl surgeist_runtime::document_scripting::DocumentScriptHost
 pub fn surgeist_runtime::document_scripting::DocumentScriptHost::select_source_event<C>(&mut self, permit: &surgeist_runtime::document_scripting::DocumentScriptPermit, request: &surgeist_dom::internal::source::event::DomSourceEventRequest, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, context: &mut C, limits: surgeist_runtime::source::DomSourceEventServiceLimits) -> core::result::Result<surgeist_runtime::document_scripting::DocumentScriptEventProgress<'_>, surgeist_runtime::document_scripting::DocumentScriptEventError>
 impl surgeist_runtime::document_scripting::DocumentScriptHost
@@ -701,6 +702,7 @@ pub surgeist_runtime::element_task::DomElementTask::DialogClose(surgeist_dom::in
 pub surgeist_runtime::element_task::DomElementTask::DialogToggle(surgeist_dom::internal::store::source::operation::dialog_queue::DomDialogToggleTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::FileSelection(surgeist_dom::internal::store::source::operation::element_queue::DomFileSelectionTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::ObjectRepresentation(surgeist_dom::internal::store::source::operation::element_queue::DomObjectRepresentationTaskInfo)
+pub surgeist_runtime::element_task::DomElementTask::SelectNotification(surgeist_dom::internal::store::source::operation::element_queue::DomSelectNotificationTaskInfo)
 pub surgeist_runtime::element_task::DomElementTask::TextSelection(surgeist_dom::internal::store::source::operation::element_queue::DomTextSelectionTaskInfo)
 impl surgeist_runtime::element_task::DomElementTask
 pub fn surgeist_runtime::element_task::DomElementTask::details(self) -> core::option::Option<surgeist_runtime::element_task::DomDetailsTask>
@@ -729,6 +731,23 @@ pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::dispatch: 
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
 pub surgeist_runtime::element_task::DomElementTaskProgress::Retained::task: surgeist_runtime::element_task::DomElementTask
 pub surgeist_runtime::element_task::DomElementTaskProgress::Running(surgeist_dom::internal::element_tasks::DomElementTaskId)
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationComplete
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationComplete::change: core::option::Option<surgeist_runtime::event::DomEventDispatchReceipt>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationComplete::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationComplete::input: surgeist_runtime::event::DomEventDispatchReceipt
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationComplete::task: surgeist_dom::internal::store::source::operation::element_queue::DomSelectNotificationTaskInfo
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceCancelled
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceCancelled::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceCancelled::source: alloc::boxed::Box<surgeist_runtime::source::DomSourceDriveProgress>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceCancelled::task: surgeist_dom::internal::store::source::operation::element_queue::DomSelectNotificationTaskInfo
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceFailed
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceFailed::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceFailed::source: alloc::boxed::Box<surgeist_runtime::source::DomSourceDriveProgress>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourceFailed::task: surgeist_dom::internal::store::source::operation::element_queue::DomSelectNotificationTaskInfo
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourcePending
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourcePending::displaced_owner: core::option::Option<surgeist_runtime::element_task::DomElementTaskRuntime>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourcePending::source: alloc::boxed::Box<surgeist_runtime::source::DomSourceDriveProgress>
+pub surgeist_runtime::element_task::DomElementTaskProgress::SelectNotificationSourcePending::task: surgeist_dom::internal::store::source::operation::element_queue::DomSelectNotificationTaskInfo
 pub surgeist_runtime::element_task::DomElementTaskProgress::SkippedFileSelectionIneligible(surgeist_dom::internal::store::source::operation::element_queue::DomFileSelectionTaskInfo)
 pub surgeist_runtime::element_task::DomElementTaskProgress::SkippedTargetDestroyed(surgeist_runtime::element_task::DomElementTask)
 pub enum surgeist_runtime::element_task::DomElementTaskRuntimeError
@@ -742,6 +761,7 @@ pub surgeist_runtime::element_task::DomElementTaskRuntimeError::IdentityExhauste
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::OutOfOrderTransfer
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::OwnerDisposed
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::PretransferredSession
+pub surgeist_runtime::element_task::DomElementTaskRuntimeError::SelectNotificationSource(alloc::boxed::Box<surgeist_runtime::source::DomSourceDriveError>)
 pub surgeist_runtime::element_task::DomElementTaskRuntimeError::SourceEvent(surgeist_runtime::source::DomSourceEventRuntimeError)
 impl core::convert::From<surgeist_dom::internal::store::DomError> for surgeist_runtime::element_task::DomElementTaskRuntimeError
 pub fn surgeist_runtime::element_task::DomElementTaskRuntimeError::from(error: surgeist_dom::internal::store::DomError) -> Self
@@ -767,6 +787,7 @@ pub fn surgeist_runtime::element_task::DomElementTaskRuntime::set_limits(&mut se
 pub fn surgeist_runtime::element_task::DomElementTaskRuntime::work_used(&self) -> core::result::Result<u64, surgeist_runtime::element_task::DomElementTaskRuntimeError>
 impl surgeist_runtime::element_task::DomElementTaskRuntime
 pub fn surgeist_runtime::element_task::DomElementTaskRuntime::run_next<C: surgeist_runtime::element_task::DomElementTaskEventContext>(dom: &mut surgeist_runtime::event::DomEventDom<'_>, source: surgeist_dom::internal::element_tasks::DomElementTaskSourceKind, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, context: &mut C, limits: surgeist_runtime::element_task::DomElementTaskRunLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::element_task::DomElementTaskProgress, surgeist_runtime::element_task::DomElementTaskRuntimeError>
+pub fn surgeist_runtime::element_task::DomElementTaskRuntime::run_next_with_source_services<C: surgeist_runtime::element_task::DomElementTaskEventContext>(dom: &mut surgeist_runtime::event::DomEventDom<'_>, source: surgeist_dom::internal::element_tasks::DomElementTaskSourceKind, dispatcher: &mut surgeist_runtime::event::DomEventDispatcher<C>, context: &mut C, limits: surgeist_runtime::element_task::DomElementTaskRunLimits, services: &mut surgeist_runtime::source::DomSourceServices<'_>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_runtime::element_task::DomElementTaskProgress, surgeist_runtime::element_task::DomElementTaskRuntimeError>
 impl core::fmt::Debug for surgeist_runtime::element_task::DomElementTaskRuntime
 pub fn surgeist_runtime::element_task::DomElementTaskRuntime::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::element_task::DomElementTaskRuntimeLimits

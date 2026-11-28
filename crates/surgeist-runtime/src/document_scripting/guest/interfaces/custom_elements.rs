@@ -9,8 +9,8 @@ use surgeist_bindings_js::{
 use surgeist_dom::{
     DomSnapshot,
     custom_element::{
-        DomCustomElementReactionKind, DomRegistryBinding, DomRegistryDefinitionId, DomRegistryId,
-        DomSourceCustomElementRequest,
+        DomCustomElementReaction, DomCustomElementReactionKind, DomRegistryBinding,
+        DomRegistryDefinitionId, DomRegistryId, DomSourceCustomElementRequest,
     },
     identity::NodeId,
     script::DomDocumentScriptRegistration,
@@ -53,7 +53,23 @@ impl PublicEventBindings {
         )
     }
 
-    pub(super) fn schedule_backup_reactions(&self, scope: &mut Scope<'_>) -> Result<(), Error> {
+    pub(in crate::document_scripting::guest) fn has_unscheduled_backup_reactions(
+        &self,
+        events: &GuestEvents,
+        registration: &DomDocumentScriptRegistration,
+    ) -> Result<bool, DocumentGuestEventError> {
+        if self.backup_reactions_scheduled.get() {
+            return Ok(false);
+        }
+        use_reaction_work(events, |remaining| {
+            registration.has_backup_custom_element_reactions(remaining)
+        })
+    }
+
+    pub(in crate::document_scripting::guest) fn schedule_backup_reactions(
+        &self,
+        scope: &mut Scope<'_>,
+    ) -> Result<(), Error> {
         if !self.backup_reactions_scheduled.get() {
             let job = scope.open_callback_object(&self.backup_reaction_job)?;
             scope.enqueue_microtask(&job)?;
@@ -1352,19 +1368,7 @@ impl Capture {
                     break;
                 };
                 while let Some(fact) = batch.front() {
-                    let reaction = if matches!(
-                        fact.kind,
-                        surgeist_dom::custom_element::DomCustomElementReactionKind::Upgrade
-                    ) {
-                        Some(QueuedReaction::Upgrade {
-                            definition: Some(fact.definition),
-                            from_definition: false,
-                            _backing: events.reserve(owner, QueuedReaction::storage_bytes())?,
-                        })
-                    } else {
-                        self.prepare_native_callback(scope, owner, events, fact)?
-                            .map(QueuedReaction::Callback)
-                    };
+                    let reaction = self.prepare_native_reaction(scope, owner, events, fact)?;
                     if let Some(reaction) = reaction {
                         let queue = invocation.queue(events, fact.element)?;
                         if routed_reactions_pending(owner, events) {
@@ -1454,12 +1458,12 @@ impl Capture {
             let fact = backup
                 .front()
                 .ok_or(DocumentScriptNativeError::ProjectionCustody)?;
-            if let Some(callback) = self.prepare_native_callback(scope, owner, events, fact)? {
+            if let Some(reaction) = self.prepare_native_reaction(scope, owner, events, fact)? {
                 queue
                     .reactions
                     .try_borrow_mut()
                     .map_err(|_| DocumentScriptNativeError::Busy)?
-                    .push_back(QueuedReaction::Callback(callback));
+                    .push_back(reaction);
             }
             backup.acknowledge_front();
         }
@@ -1704,12 +1708,30 @@ impl Capture {
         )?))
     }
 
+    fn prepare_native_reaction(
+        &self,
+        scope: &mut Scope<'_>,
+        owner: &NativeOwner,
+        events: &GuestEvents,
+        fact: DomCustomElementReaction<'_>,
+    ) -> Result<Option<QueuedReaction>, DocumentGuestEventError> {
+        if matches!(fact.kind, DomCustomElementReactionKind::Upgrade) {
+            return Ok(Some(QueuedReaction::Upgrade {
+                definition: Some(fact.definition),
+                from_definition: false,
+                _backing: events.reserve(owner, QueuedReaction::storage_bytes())?,
+            }));
+        }
+        self.prepare_native_callback(scope, owner, events, fact)
+            .map(|callback| callback.map(QueuedReaction::Callback))
+    }
+
     fn prepare_native_callback<'scope>(
         &self,
         scope: &mut Scope<'scope>,
         owner: &NativeOwner,
         events: &GuestEvents,
-        fact: surgeist_dom::custom_element::DomCustomElementReaction<'_>,
+        fact: DomCustomElementReaction<'_>,
     ) -> Result<Option<CallbackReaction>, DocumentGuestEventError> {
         use surgeist_dom::custom_element::DomCustomElementReactionKind as Kind;
         let (kind, callback_index) = match fact.kind {

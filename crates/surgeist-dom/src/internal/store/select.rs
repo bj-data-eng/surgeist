@@ -19,6 +19,7 @@ mod discovery_observation;
 #[cfg(test)]
 #[path = "select/discovery_tests.rs"]
 mod discovery_tests;
+mod user_notification;
 mod value;
 
 use surgeist_html::{
@@ -621,6 +622,51 @@ impl Draft {
     }
     fn multiple(&self, key: Key, cancel: &AtomicBool) -> Result<bool, DomError> {
         self.has(key, Attr::Multiple, cancel)
+    }
+
+    pub(super) fn toggle_user_select_option(
+        &mut self,
+        select: Key,
+        option: Key,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        use source::operation::element_queue::{Kind, Pending};
+        use surgeist_html::bounded::select::{
+            HtmlSelectUserToggleState, HtmlSelectUserToggleTarget, toggle_select_option_for_user,
+        };
+        if self.element(select)?.language().select_state().is_none()
+            || !self.multiple(select, cancel)?
+            || self.control_is_disabled(select, cancel)?
+            || self.element(option)?.language().option_state().is_none()
+            || self
+                .families
+                .option_owner(self.live_key(option), &mut || self.select_step(cancel))?
+                != Some(self.live_key(select))
+            || self.option_disabled(option, cancel)?
+        {
+            return Err(DomError::SelectUserActionInapplicable);
+        }
+        let association = self
+            .element_task_association(select, cancel)?
+            .ok_or(DomError::SelectNotificationTaskSourceUnavailable)?;
+        let cursor = self
+            .with_element_fields(option, cancel, |option| {
+                option.option_state_mut().and_then(|state| {
+                    toggle_select_option_for_user(
+                        HtmlSelectUserToggleState::EnabledMultiple,
+                        HtmlSelectUserToggleTarget::EnabledMember(&mut state.flags),
+                    )
+                })
+            })?
+            .ok_or(DomError::SelectProtocol)?;
+        self.queue_final_element_task(
+            Pending {
+                target: select,
+                association,
+                kind: Kind::SelectNotification(Some(cursor)),
+            },
+            cancel,
+        )
     }
     fn options(&self, key: Key, cancel: &AtomicBool) -> Result<ScratchVec<Key>, DomError> {
         #[cfg(test)]

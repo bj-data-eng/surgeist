@@ -224,8 +224,8 @@ use surgeist_dom::task::{
     DomElementTaskSourceKind, DomFileSelectionTask, DomFileSelectionTaskInfo, DomNativeCheckpoint,
     DomNativeCheckpointLimits, DomNativeTaskId, DomObjectRepresentationTask,
     DomObjectRepresentationTaskInfo, DomQueuedSourceElementTask, DomQueuedSourceElementTasks,
-    DomSourceElementTaskInfo, DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest,
-    DomTextSelectionTaskInfo,
+    DomSelectNotificationTask, DomSelectNotificationTaskInfo, DomSourceElementTaskInfo,
+    DomSourceElementTaskQueueCommit, DomSourceElementTaskQueueRequest, DomTextSelectionTaskInfo,
 };
 use surgeist_dom::tree::{
     DomAttr, DomAttribute, DomAttributeAttachment, DomDocument, DomDocumentPosition,

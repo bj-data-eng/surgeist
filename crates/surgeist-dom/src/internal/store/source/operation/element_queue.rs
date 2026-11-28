@@ -5,25 +5,29 @@ use crate::internal::{
     details::{DomDetailsToggleIntention, DomElementTaskAssociation},
     element_tasks::{Binding, DomElementTaskId, DomElementTaskSource},
 };
+use surgeist_html::bounded::select::{
+    HtmlSelectNotificationAction, HtmlSelectNotificationCursor, HtmlSelectNotificationEvent,
+    HtmlSelectNotificationReply,
+};
 
-#[derive(Clone, Copy)]
 pub(in crate::internal::store) enum Kind {
     ObjectRepresentation { node_document: Key },
     TextSelection,
     FileSelection,
+    SelectNotification(Option<HtmlSelectNotificationCursor>),
 }
 
 impl Kind {
-    pub(in crate::internal::store) fn unavailable(self) -> DomError {
+    pub(in crate::internal::store) fn unavailable(&self) -> DomError {
         match self {
             Self::ObjectRepresentation { .. } => DomError::ObjectTaskSourceUnavailable,
             Self::TextSelection => DomError::TextSelectionTaskSourceUnavailable,
             Self::FileSelection => DomError::FileSelectionTaskSourceUnavailable,
+            Self::SelectNotification(_) => DomError::SelectNotificationTaskSourceUnavailable,
         }
     }
 }
 
-#[derive(Clone, Copy)]
 pub(in crate::internal::store) struct Pending {
     pub(in crate::internal::store) target: Key,
     pub(in crate::internal::store) association: DomElementTaskAssociation,
@@ -185,12 +189,163 @@ impl std::fmt::Debug for DomFileSelectionTask {
     }
 }
 
+/// The exact queued occurrence of a native Select update notification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomSelectNotificationTaskInfo {
+    id: DomElementTaskId,
+    association: DomElementTaskAssociation,
+}
+
+impl DomSelectNotificationTaskInfo {
+    /// Original occurrence and receiver generation.
+    pub const fn id(self) -> DomElementTaskId {
+        self.id
+    }
+
+    /// Original relevant Global and its associated Document.
+    pub const fn queue_association(self) -> DomElementTaskAssociation {
+        self.association
+    }
+}
+
+/// Affine custody of the notification created by the original toggle.
+#[derive(Debug)]
+pub struct DomSelectNotificationTask {
+    info: DomSelectNotificationTaskInfo,
+    pub(in crate::internal::store) binding: std::sync::Weak<Binding>,
+    // Filled only at the exclusive publication fence, so a refused reservation
+    // leaves the original cursor in its Draft.
+    pub(in crate::internal::store) cursor: Option<HtmlSelectNotificationCursor>,
+    content_operation: Option<DomSourceOperationId>,
+}
+
+impl DomSelectNotificationTask {
+    /// Provenance of the original notification.
+    pub const fn info(&self) -> DomSelectNotificationTaskInfo {
+        self.info
+    }
+
+    /// The original HTML task's reached action.
+    pub fn action(&self) -> Option<HtmlSelectNotificationAction> {
+        self.cursor
+            .as_ref()
+            .and_then(HtmlSelectNotificationCursor::action)
+    }
+
+    /// Identity of this task's reached selectedcontent Source operation.
+    pub const fn content_operation(&self) -> Option<DomSourceOperationId> {
+        self.content_operation
+    }
+
+    /// Transfer the remaining event sequence to the original task dispatcher
+    /// once the canonical DOM effects have finished.
+    pub fn take_event_sequence(&mut self) -> Option<HtmlSelectNotificationCursor> {
+        if self.action()
+            == Some(HtmlSelectNotificationAction::Dispatch(
+                HtmlSelectNotificationEvent::Input,
+            ))
+        {
+            self.cursor.take()
+        } else {
+            None
+        }
+    }
+
+    /// Accept the actual completion of this task's selectedcontent operation.
+    pub fn accept_content_completion(
+        &mut self,
+        completed: &DomSourceCompletion,
+    ) -> Result<(), DomError> {
+        if self.content_operation != Some(completed.operation) || completed.cancelled {
+            return Err(DomError::InvalidNativeTask);
+        }
+        self.cursor
+            .as_mut()
+            .ok_or(DomError::InvalidNativeTask)?
+            .accept(HtmlSelectNotificationReply::SelectedcontentUpdated)
+            .map_err(|_| DomError::SelectProtocol)?;
+        self.content_operation = None;
+        Ok(())
+    }
+}
+
+impl DomElementTaskSource {
+    /// Start or resume this notification's original selectedcontent Source
+    /// operation. Its exact completion is required to advance the task.
+    ///
+    /// An interrupted advance retains the operation for this task to resume.
+    /// The selectedcontent effect belongs to the admitted notification, so a
+    /// separate Source cancellation request cannot cancel just this effect.
+    pub fn select_notification_content<'dom>(
+        &self,
+        dom: &'dom mut Dom,
+        task: &mut DomSelectNotificationTask,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLease<'dom>, DomError> {
+        self.qualify(dom)?;
+        dom.qualify_element_task(&task.binding)?;
+        if task.action() != Some(HtmlSelectNotificationAction::UpdateSelectedcontent) {
+            return Err(DomError::InvalidNativeTask);
+        }
+        let id = task.info().id();
+        if let Some(operation) = task.content_operation {
+            if !dom.source_operation.as_ref().is_some_and(|op| {
+                op.id == operation
+                    && matches!(op.commands, OperationRoot::SelectNotificationContent(original) if original == id)
+            }) {
+                return Err(DomError::InvalidNativeTask);
+            }
+            return self
+                .resume_select_notification_content(dom, operation, limits, cancel)
+                .map(|(_, lease)| lease);
+        }
+        let mut lease = dom.begin_source_root(
+            OperationRoot::SelectNotificationContent(id),
+            formation::allocated_arc(BatchIdentity),
+            limits,
+            cancel,
+        )?;
+        task.content_operation = Some(lease.id);
+        lease.task_authorization = Some(self.binding.clone());
+        Ok(lease)
+    }
+
+    /// Recover an admitted Select task's exact selectedcontent Source operation
+    /// through its original task owner, including when the owner has discarded
+    /// the remaining notification cursor. The returned task identity is the
+    /// original occurrence. This resumes only its Source work.
+    pub fn resume_select_notification_content<'dom>(
+        &self,
+        dom: &'dom mut Dom,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(DomElementTaskId, DomSourceLease<'dom>), DomError> {
+        self.qualify(dom)?;
+        let Some(current) = dom
+            .source_operation
+            .as_ref()
+            .filter(|op| op.id == operation)
+        else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let OperationRoot::SelectNotificationContent(task) = current.commands else {
+            return Err(DomError::InvalidSourceOperation);
+        };
+        let mut lease = dom.resume_source_permission(operation, limits, cancel)?;
+        lease.task_authorization = Some(self.binding.clone());
+        Ok((task, lease))
+    }
+}
+
 /// Prospective element task data used to admit the actual bank entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceElementTaskInfo {
     ObjectRepresentation(DomObjectRepresentationTaskInfo),
     TextSelection(DomTextSelectionTaskInfo),
     FileSelection(DomFileSelectionTaskInfo),
+    SelectNotification(DomSelectNotificationTaskInfo),
 }
 
 /// Owned task transferred at the original Source publication fence.
@@ -199,6 +354,7 @@ pub enum DomQueuedSourceElementTask {
     ObjectRepresentation(DomObjectRepresentationTask),
     TextSelection(DomTextSelectionTaskInfo),
     FileSelection(DomFileSelectionTask),
+    SelectNotification(DomSelectNotificationTask),
 }
 
 impl DomQueuedSourceElementTask {
@@ -209,6 +365,9 @@ impl DomQueuedSourceElementTask {
             }
             Self::TextSelection(info) => DomSourceElementTaskInfo::TextSelection(*info),
             Self::FileSelection(task) => DomSourceElementTaskInfo::FileSelection(task.info()),
+            Self::SelectNotification(task) => {
+                DomSourceElementTaskInfo::SelectNotification(task.info())
+            }
         }
     }
 }
@@ -255,6 +414,25 @@ impl DomSourceElementTaskQueueCommit<'_, '_> {
     pub fn publish(
         mut self,
     ) -> Result<(DomSourceCompletion, DomQueuedSourceElementTasks), DomError> {
+        if let [DomQueuedSourceElementTask::SelectNotification(task)] = self.tasks.as_mut_slice() {
+            let staged = self
+                .lease
+                .dom
+                .source_operation
+                .as_mut()
+                .and_then(|op| op.draft.final_element_tasks.as_mut())
+                .ok_or(DomError::InvalidSourceOperation)?;
+            let [
+                Pending {
+                    kind: Kind::SelectNotification(cursor @ Some(_)),
+                    ..
+                },
+            ] = staged.as_mut_slice()
+            else {
+                return Err(DomError::InvalidSourceOperation);
+            };
+            task.cursor = cursor.take();
+        }
         let segment = self
             .segment
             .take()
@@ -435,11 +613,11 @@ impl<'dom> DomSourceLease<'dom> {
                     )
                     .ok_or(DomError::RepresentationExhausted)?;
                 let id = source.task_id(serial, target)?;
-                tasks.push(match task.kind {
+                tasks.push(match &task.kind {
                     Kind::ObjectRepresentation { node_document } => {
                         let node_document = op
                             .draft
-                            .published_id(node_document)
+                            .published_id(*node_document)
                             .map(DocumentId)
                             .ok_or(DomError::WrongDocument)?;
                         DomQueuedSourceElementTask::ObjectRepresentation(
@@ -487,6 +665,18 @@ impl<'dom> DomSourceLease<'dom> {
                             _custody: custody,
                         })
                     }
+                    Kind::SelectNotification(Some(_)) if staged.len() == 1 => {
+                        DomQueuedSourceElementTask::SelectNotification(DomSelectNotificationTask {
+                            info: DomSelectNotificationTaskInfo {
+                                id,
+                                association: task.association,
+                            },
+                            binding: Arc::downgrade(&source.binding),
+                            cursor: None,
+                            content_operation: None,
+                        })
+                    }
+                    Kind::SelectNotification(_) => return Err(DomError::InvalidSourceOperation),
                 });
             }
             Ok((segment, tasks, formation))

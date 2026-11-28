@@ -24,11 +24,11 @@ use surgeist_dom::{
         DomNativeHtmlInstallError, DomNativeHtmlInstallTarget, DomSourceNativeHtmlInstallLimits,
     },
     source::{
-        DomSourceCompletion, DomSourceEdit, DomSourceLease, DomSourceLimits, DomSourceOperationId,
-        DomSourceProgress, DomSourceRequest,
+        DomSourceCompletion, DomSourceEdit, DomSourceExecutionEntryScope, DomSourceLease,
+        DomSourceLimits, DomSourceOperationId, DomSourceProgress, DomSourceRequest,
     },
     style::{DomStyleInlineCspObservation, DomStyleSource},
-    task::DomNativeCheckpointLimits,
+    task::{DomElementTaskSource, DomNativeCheckpointLimits, DomSelectNotificationTask},
 };
 
 /// Borrowed services for the reached requests of one actual Source operation.
@@ -364,14 +364,15 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<(), DomSourceRuntimeError> {
         self.prepare(dom, cancel)?;
-        dom.resume_source_edit(operation, limits, cancel)?
-            .cancel_script_preparation(cancel)?;
-        Ok(())
+        self.with_handoff_source(dom, operation, limits, cancel, |mut lease| {
+            lease.cancel_script_preparation(cancel)?;
+            Ok(())
+        })
     }
 
     /// Apply the named processor to the actual reached Meta pragma. Use the
     /// same processor for subsequent insertions and reads of this policy.
-    /// The ordinary Source resume publishes the prepared policy and tree.
+    /// Resuming the original Source publishes the prepared policy and tree.
     pub fn service_meta_csp(
         &self,
         dom: &mut DomEventDom<'_>,
@@ -381,9 +382,32 @@ impl DomSourceRuntime {
         cancel: &AtomicBool,
     ) -> Result<(), DomSourceRuntimeError> {
         self.qualify_source_owners(dom)?;
-        dom.resume_source_edit(request.operation(), limits, cancel)?
-            .process_meta_csp(request, processor, cancel)
-            .map_err(DomSourceRuntimeError::MetaCsp)
+        self.with_handoff_source(dom, request.operation(), limits, cancel, |mut lease| {
+            lease
+                .process_meta_csp(request, processor, cancel)
+                .map_err(DomSourceRuntimeError::MetaCsp)
+        })
+    }
+
+    fn with_handoff_source<T>(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        limits: DomSourceLimits,
+        cancel: &AtomicBool,
+        service: impl FnOnce(DomSourceLease<'_>) -> Result<T, DomSourceRuntimeError>,
+    ) -> Result<T, DomSourceRuntimeError> {
+        match dom.resume_source_edit(operation, limits, cancel) {
+            Ok(lease) => return service(lease),
+            Err(DomError::InvalidSourceOperation) => {}
+            Err(error) => return Err(error.into()),
+        }
+        let lease = self
+            .element_tasks
+            .resume_select_notification_source(dom, operation, limits, cancel)
+            .map_err(DomSourceRuntimeError::ElementTasks)?
+            .ok_or(DomError::InvalidSourceOperation)?;
+        service(lease)
     }
 
     /// Dispatch exactly the issued event and accept its actual receipt. This
@@ -531,7 +555,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: None,
+                permission: DrivePermission::Edit,
             },
             guard,
             progress,
@@ -577,7 +601,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: None,
+                permission: DrivePermission::Edit,
             },
             guard,
             progress,
@@ -642,7 +666,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: None,
+                permission: DrivePermission::Edit,
             },
             drive,
             progress,
@@ -699,7 +723,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: None,
+                permission: DrivePermission::Edit,
             },
             drive,
             progress,
@@ -751,7 +775,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: None,
+                permission: DrivePermission::Edit,
             },
             guard,
             progress,
@@ -809,7 +833,7 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: Some(task),
+                permission: DrivePermission::SelectCompletion(task),
             },
             guard,
             progress,
@@ -859,13 +883,72 @@ impl DomSourceRuntime {
             dom,
             DriveRoot {
                 limits,
-                select: Some(task),
+                permission: DrivePermission::SelectCompletion(task),
             },
             guard,
             progress,
             services,
             cancel,
         )
+    }
+    pub(crate) fn drive_select_notification_content(
+        &self,
+        dom: &mut DomEventDom<'_>,
+        source: &DomElementTaskSource,
+        task: &mut DomSelectNotificationTask,
+        limits: DomSourceLimits,
+        services: &mut DomSourceServices<'_>,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceDriveProgress, Box<DomSourceDriveError>> {
+        let guard = self
+            .prepare(dom, cancel)
+            .map_err(DomSourceDriveError::from)?;
+        if let Some(scope) = services.execution_scope {
+            self.hosted
+                .qualify_execution_scope(scope)
+                .map_err(DomSourceRuntimeError::Hosted)
+                .map_err(DomSourceDriveError::from)?;
+        }
+        let progress = {
+            let mut lease = source
+                .select_notification_content(dom.raw_mut(), task, limits, cancel)
+                .map_err(DomSourceDriveError::from)?;
+            if let Some(scope) = services.execution_scope {
+                // A failed initial scope admission can leave this same lease
+                // parked before its first advance. Only an unsealed Native
+                // entry can still choose a Host. A hosted receiver already
+                // captured the correct Host from the live tree.
+                let bind = matches!(
+                    lease
+                        .execution_entry_scope()
+                        .map_err(DomSourceDriveError::from)?,
+                    DomSourceExecutionEntryScope::NativeEntry,
+                );
+                self.hosted
+                    .bind_execution_scope(&mut lease, scope, bind, cancel)
+                    .map_err(DomSourceRuntimeError::Hosted)
+                    .map_err(DomSourceDriveError::from)?;
+            }
+            self.drive_lease(
+                &guard,
+                &mut lease,
+                services.meta,
+                services.url.as_ref().map(|service| service.revision),
+                cancel,
+            )?
+        };
+        self.finish_or_supply(
+            dom,
+            DriveRoot {
+                limits,
+                permission: DrivePermission::SelectNotification(source, task),
+            },
+            guard,
+            progress,
+            services,
+            cancel,
+        )
+        .map_err(Box::new)
     }
 }
 
@@ -1253,7 +1336,36 @@ enum Advanced {
 
 struct DriveRoot<'a> {
     limits: DomSourceLimits,
-    select: Option<&'a DomSelectTask>,
+    permission: DrivePermission<'a>,
+}
+
+enum DrivePermission<'a> {
+    Edit,
+    SelectCompletion(&'a DomSelectTask),
+    SelectNotification(&'a DomElementTaskSource, &'a mut DomSelectNotificationTask),
+}
+
+impl DriveRoot<'_> {
+    fn resume<'dom>(
+        &mut self,
+        dom: &'dom mut DomEventDom<'_>,
+        operation: DomSourceOperationId,
+        cancel: &AtomicBool,
+    ) -> Result<DomSourceLease<'dom>, DomError> {
+        match &mut self.permission {
+            DrivePermission::Edit => dom.resume_source_edit(operation, self.limits, cancel),
+            DrivePermission::SelectCompletion(task) => {
+                dom.raw_mut()
+                    .resume_select_completion(operation, task, self.limits, cancel)
+            }
+            DrivePermission::SelectNotification(source, task)
+                if task.content_operation() == Some(operation) =>
+            {
+                source.select_notification_content(dom.raw_mut(), task, self.limits, cancel)
+            }
+            DrivePermission::SelectNotification(_, _) => Err(DomError::InvalidSourceOperation),
+        }
+    }
 }
 
 impl DomSourceRuntime {
@@ -1290,13 +1402,12 @@ impl DomSourceRuntime {
     fn finish_or_supply_execution(
         &self,
         dom: &mut DomEventDom<'_>,
-        root: DriveRoot<'_>,
+        mut root: DriveRoot<'_>,
         mut drive: SourceDrive<'_, '_>,
         mut progress: DomSourceDriveProgress,
         services: &mut DomSourceServices<'_>,
         cancel: &AtomicBool,
     ) -> Result<DomSourceDriveProgress, DomSourceDriveError> {
-        let DriveRoot { limits, select } = root;
         loop {
             match progress {
                 DomSourceDriveProgress::Complete(_)
@@ -1330,12 +1441,7 @@ impl DomSourceRuntime {
                         });
                     };
                     let operation = request.source().operation();
-                    let mut lease = if let Some(task) = select {
-                        dom.raw_mut()
-                            .resume_select_completion(operation, task, limits, cancel)?
-                    } else {
-                        dom.resume_source_edit(operation, limits, cancel)?
-                    };
+                    let mut lease = root.resume(dom, operation, cancel)?;
                     lease.accept_inline_csp(&request, &observation, cancel)?;
                     progress = self.drive_lease_execution(
                         &drive.guard,
@@ -1358,12 +1464,7 @@ impl DomSourceRuntime {
                     };
                     let operation = child.operation();
                     let issued = {
-                        let mut lease = if let Some(task) = select {
-                            dom.raw_mut()
-                                .resume_select_completion(operation, task, limits, cancel)?
-                        } else {
-                            dom.resume_source_edit(operation, limits, cancel)?
-                        };
+                        let mut lease = root.resume(dom, operation, cancel)?;
                         lease.source_url_request(&child, stage, service.revision, cancel)?
                     };
                     // Both exclusive owners and all issuer/store/RefCell guards are
@@ -1381,12 +1482,7 @@ impl DomSourceRuntime {
                             reason: DomSourceUnavailable::Url(stage),
                         });
                     };
-                    let mut lease = if let Some(task) = select {
-                        dom.raw_mut()
-                            .resume_select_completion(operation, task, limits, cancel)?
-                    } else {
-                        dom.resume_source_edit(operation, limits, cancel)?
-                    };
+                    let mut lease = root.resume(dom, operation, cancel)?;
                     lease.accept_source_url_observation(
                         &child,
                         &issued,
