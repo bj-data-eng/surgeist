@@ -388,6 +388,88 @@ fn refused_acceptance_retains_original_absence_across_progress_and_permission_re
     }
 }
 #[test]
+fn disposed_headless_owner_cannot_publish_its_retained_focus_result() {
+    use crate::internal::dom_style::{DomShutdownOutcome, DomShutdownReason};
+
+    let (mut session, _, _, original) = parked(10_000_000);
+    let (cap, _, _) = source_focus_boundary(&mut session, &original, 3, false);
+    let cancel = AtomicBool::new(false);
+    let hosted = session.hosted_execution();
+    let old = session.snapshot();
+    let assert_pending = |session: &mut DomSession| {
+        assert_eq!(session.snapshot().stamp(), old.stamp());
+        assert_eq!(
+            session.dom().pending_source_edit().unwrap().operation(),
+            original.operation()
+        );
+        assert_eq!(
+            hosted
+                .state()
+                .unwrap()
+                .borrow()
+                .focus
+                .pending
+                .as_ref()
+                .unwrap()
+                .request(),
+            &original
+        );
+    };
+    {
+        let mut dom = session.dom();
+        let mut lease = dom
+            .raw_mut()
+            .resume_source_edit(original.operation(), source_limits(cap), &cancel)
+            .unwrap();
+        assert!(matches!(
+            hosted.service_focus(&mut lease, &original, &cancel),
+            Err(DomHostedRuntimeError::Dom(DomHostedError::Dom(DomError::SourceWorkLimit { limit })))
+                if limit == cap
+        ));
+    }
+    assert_pending(&mut session);
+    let DomShutdownOutcome::Pending {
+        mut session,
+        reason: DomShutdownReason::SourceTail(operation),
+    } = session.try_shutdown()
+    else {
+        panic!("graceful shutdown must return the exact pending Source");
+    };
+    assert_eq!(operation, original.operation());
+    assert_pending(&mut session);
+    drop(session);
+    assert_eq!(
+        old.incomplete_source_operation(),
+        Some(original.operation())
+    );
+
+    let (mut other, _, _, other_request) = parked(10_000_000);
+    let other_hosted = other.hosted_execution();
+    let basis = other.snapshot().stamp();
+    let mut other_dom = other.dom();
+    let mut other_lease = other_dom
+        .raw_mut()
+        .resume_source_edit(
+            other_request.operation(),
+            source_limits(10_000_000),
+            &cancel,
+        )
+        .unwrap();
+    let work = other_lease.status().spent_work();
+    assert_eq!(
+        hosted.service_focus(&mut other_lease, &original, &cancel),
+        Err(DomHostedRuntimeError::OwnerDisposed)
+    );
+    assert_eq!(other_lease.snapshot().stamp(), basis);
+    assert_eq!(other_lease.status().spent_work(), work);
+    assert!(
+        other_hosted
+            .service_focus(&mut other_lease, &other_request, &cancel)
+            .unwrap()
+    );
+}
+
+#[test]
 fn retired_and_reused_host_cannot_validate_a_retained_original_result() {
     let (mut session, host, _, original) = parked(10_000_000);
     let (cap, _, target) = source_focus_boundary(&mut session, &original, 3, false);
