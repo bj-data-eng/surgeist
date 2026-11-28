@@ -866,3 +866,133 @@ fn captured_number_and_temporal_current_values_are_admitted_as_input_evidence() 
         );
     }
 }
+
+#[test]
+fn captured_range_current_value_is_admitted_for_intrinsic_validity() {
+    let (capture, subject) = fixture("input", &[("type", "range")], true);
+    let produced = facts(&capture, &[(subject, Some("51".into()))], 10000);
+    assert!(
+        produced.is_ok(),
+        "the captured Range current value must be admitted: {produced:?}"
+    );
+}
+
+#[test]
+fn input_range_validity_compares_recovered_current_and_bounds_exactly() {
+    for (state, min, max, current, expected) in [
+        ("number", "2suffix", "4", "1", (true, false)),
+        ("number", "2", "4", "", (false, false)),
+        ("number", "5", "3", "4", (true, true)),
+        ("number", "bad", "4", "5", (false, true)),
+        ("range", "bad", "bad", "101", (false, true)),
+        ("range", "", "", "-1", (true, false)),
+        (
+            "date",
+            "00002024-02-29",
+            "2024-03-01",
+            "2024-02-29",
+            (false, false),
+        ),
+        (
+            "date",
+            "9007199254740992-01-02",
+            "",
+            "9007199254740992-01-01",
+            (true, false),
+        ),
+        ("month", "2024-05", "2024-07", "2024-08", (false, true)),
+        ("week", "2023-W52", "2024-W01", "2024-W01", (false, false)),
+        (
+            "datetime-local",
+            "",
+            "2024-01-01 01:00",
+            "2024-01-01T01:00:01",
+            (false, true),
+        ),
+        ("time", "23:00", "01:00", "12:00", (true, true)),
+        ("time", "23:00", "01:00", "00:00", (false, false)),
+        ("time", "23:00", "01:00", "23:00", (false, false)),
+        ("time", "23:00", "01:00", "01:00", (false, false)),
+        ("time", "01:00:00.0001", "", "01:00", (true, false)),
+        ("time", "01:00:01.1230", "", "01:00:01.123", (false, false)),
+        ("time", "01:00", "02:00", "25:00", (false, false)),
+    ] {
+        let (capture, id) = fixture(
+            "input",
+            &[
+                ("type", state),
+                ("min", min),
+                ("max", max),
+                ("value", "3"),
+                ("disabled", ""),
+            ],
+            true,
+        );
+        let cx = context(&capture, &[(id.clone(), Some(current.into()))]);
+        let result = report(
+            &capture,
+            &cx,
+            &id,
+            HtmlSemanticQuery::InputRangeValidity,
+            100,
+        );
+        let HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Known(flags)) =
+            result.results()[0].fact()
+        else {
+            panic!("{state} {current}: expected known flags");
+        };
+        assert_eq!(
+            (flags.underflow(), flags.overflow()),
+            expected,
+            "{state} {current}"
+        );
+    }
+}
+
+#[test]
+fn input_range_validity_preserves_unavailable_current_and_sticky_refusal() {
+    let q = HtmlSemanticQuery::InputRangeValidity;
+    let (capture, id) = fixture(
+        "input",
+        &[("type", "time"), ("min", "23:00"), ("max", "01:00")],
+        true,
+    );
+    let missing = context(&capture, &[]);
+    assert_eq!(
+        report(&capture, &missing, &id, q, 100).results()[0].fact(),
+        &HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::CurrentValue(id.clone())
+        ))
+    );
+    let known = context(&capture, &[(id.clone(), Some("12:00".into()))]);
+    let work = report(&capture, &known, &id, q, 100).usage().work();
+    let mut limited = session(
+        &capture,
+        &known,
+        limits(work - 1),
+        100,
+        HtmlSemanticCancellation::new(),
+    );
+    let failure = limited.query(&[request(&id, q)]).unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            ..
+        }
+    ));
+    assert_eq!(limited.query(&[]).unwrap_err(), failure);
+
+    let (capture, id) = fixture("input", &[("type", "number"), ("min", "bad")], true);
+    let missing = context(&capture, &[]);
+    assert_eq!(
+        report(&capture, &missing, &id, q, 100).results()[0].fact(),
+        &HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Known(Default::default()))
+    );
+    let (capture, id) = fixture("input", &[("type", "text")], true);
+    let missing = context(&capture, &[]);
+    assert_eq!(
+        report(&capture, &missing, &id, q, 100).results()[0].fact(),
+        &HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Inapplicable)
+    );
+}

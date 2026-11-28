@@ -5,7 +5,7 @@ use super::*;
 use surgeist_html::{
     elements::range_indicator::{HtmlMeterRange, HtmlProgressMaximum},
     microsyntax::numeric::HtmlFloatingPointNumber,
-    values::Attribute,
+    values::{Attribute, DocumentString},
     vocabulary::KnownHtmlElement,
 };
 
@@ -71,7 +71,7 @@ pub enum HtmlProgressState {
 }
 
 impl<'a> HtmlSemanticSession<'a> {
-    fn range_number(
+    pub(super) fn range_number(
         &mut self,
         raw: Option<&Attribute>,
     ) -> Result<Option<HtmlFloatingPointNumber>, HtmlSemanticFailure> {
@@ -81,9 +81,16 @@ impl<'a> HtmlSemanticSession<'a> {
         self.interpreter
             .admit_attribute_raw(Some(raw.value()))
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
-        let remaining = self.numeric_budget(raw.value().len())?;
+        self.recover_range_number(raw.value())
+    }
+
+    pub(super) fn recover_range_number(
+        &mut self,
+        value: &DocumentString,
+    ) -> Result<Option<HtmlFloatingPointNumber>, HtmlSemanticFailure> {
+        let remaining = self.numeric_budget(value.len())?;
         let result =
-            try_floating_point_number(raw.value(), HtmlFloatingPointParseMode::Recovery, remaining);
+            try_floating_point_number(value, HtmlFloatingPointParseMode::Recovery, remaining);
         let capacity = match &result {
             Ok(result) => result.capacity_bytes(),
             Err(HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded {
@@ -105,11 +112,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     required,
                     ..
                 } => match self.snapshot().allocated_bytes.checked_add(required) {
-                    Some(required) => HtmlSemanticFailureKind::LimitExceeded {
-                        resource: HtmlSemanticResource::AllocatedBytes,
-                        limit: self.limits.allocated_bytes,
-                        required,
-                    },
+                    Some(total) => return self.requested_capacity_stop(required, total),
                     None => HtmlSemanticFailureKind::RepresentationExhausted,
                 },
                 HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded { .. } => {

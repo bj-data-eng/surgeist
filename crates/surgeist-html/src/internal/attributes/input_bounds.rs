@@ -345,6 +345,22 @@ impl HtmlInputNumericConstraints {
     pub fn maximum(&self) -> Option<HtmlFloatingPointNumber> {
         self.maximum.value()
     }
+    /// Compares an already recovered current value against these bounds.
+    /// Number and Range are linear, even when the maximum is smaller than the minimum.
+    pub fn range_validity(
+        &self,
+        current: HtmlFloatingPointNumber,
+    ) -> crate::internal::elements::input_range_validity::HtmlInputRangeValidity {
+        use crate::internal::elements::input_range_validity::HtmlInputRangeValidity;
+        HtmlInputRangeValidity::from_comparisons(
+            self.minimum()
+                .and_then(|bound| current.value().partial_cmp(&bound.value())),
+            self.maximum()
+                .and_then(|bound| current.value().partial_cmp(&bound.value())),
+            false,
+        )
+    }
+
     /// Why the minimum is what it is.
     pub fn minimum_origin(&self) -> HtmlInputNumericBoundOrigin {
         self.minimum.origin()

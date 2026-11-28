@@ -1390,3 +1390,57 @@ fn required_number_and_temporal_inputs_observe_canonical_sanitization() {
         assert_eq!(missing(&empty), known(true), "{kind}");
     }
 }
+
+#[test]
+fn input_range_validity_replays_exact_native_values_and_reversed_time_bounds() {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+    let mut dom = owner();
+    let (document, _, input) = setup(&mut dom);
+    let validity = |c: &DomHtmlCapture| {
+        let HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Known(flags)) =
+            fact(c, input, HtmlSemanticQuery::InputRangeValidity)
+        else {
+            panic!("expected known Input bounds flags");
+        };
+        (flags.underflow(), flags.overflow())
+    };
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "number");
+    batch.set_attribute(input, "min", "1");
+    batch.set_attribute(input, "max", "4");
+    batch.set_attribute(input, "value", "2");
+    batch.set_input_value(input, "5");
+    apply(&mut dom, batch);
+    let number = capture(&dom.snapshot(), document);
+    assert_eq!(validity(&number), (false, true));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "time");
+    batch.set_attribute(input, "min", "23:00");
+    batch.set_attribute(input, "max", "01:00");
+    batch.set_input_value(input, "12:00");
+    apply(&mut dom, batch);
+    let gap = capture(&dom.snapshot(), document);
+    assert_eq!(validity(&gap), (true, true));
+
+    let mut batch = DomBatch::new();
+    batch.set_input_value(input, "00:59");
+    apply(&mut dom, batch);
+    assert_eq!(
+        validity(&capture(&dom.snapshot(), document)),
+        (false, false)
+    );
+
+    let mut batch = DomBatch::new();
+    batch.remove_attribute(input, "min");
+    batch.remove_attribute(input, "max");
+    batch.set_attribute(input, "type", "range");
+    batch.set_input_value(input, "150");
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+    assert_eq!(value(&snapshot, input), "100".into());
+    assert_eq!(validity(&capture(&snapshot, document)), (false, false));
+    assert_eq!(validity(&number), (false, true));
+    assert_eq!(validity(&gap), (true, true));
+}

@@ -73,7 +73,7 @@ pub enum HtmlInputValueAssignment {
 /// A conversion could not be performed in the selected state or allowance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlInputValueConversionError<E> {
-    /// The selected setter does not apply to this Input state.
+    /// The selected operation does not apply to this Input state.
     Inapplicable,
     /// The number setter refuses infinity before testing applicability.
     Infinite,
@@ -87,7 +87,7 @@ impl<E: fmt::Display> fmt::Display for HtmlInputValueConversionError<E> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Inapplicable => {
-                formatter.write_str("value conversion does not apply to this Input state")
+                formatter.write_str("operation does not apply to this Input state")
             }
             Self::Infinite => formatter.write_str("Input valueAsNumber refuses infinity"),
             Self::WorkOverflow => {

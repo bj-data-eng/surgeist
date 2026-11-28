@@ -1326,6 +1326,7 @@ pub surgeist_html_semantics::HtmlSemanticFact::Indeterminateness(surgeist_html_s
 pub surgeist_html_semantics::HtmlSemanticFact::Inertness(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::InputEmailTypeMismatch(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::InputFileValueMissing(surgeist_html_semantics::HtmlSemanticValue<bool>)
+pub surgeist_html_semantics::HtmlSemanticFact::InputRangeValidity(surgeist_html_semantics::HtmlSemanticValue<surgeist_html::internal::elements::input_range_validity::HtmlInputRangeValidity>)
 pub surgeist_html_semantics::HtmlSemanticFact::InputSuggestionsSource(surgeist_html_semantics::HtmlSemanticValue<core::option::Option<surgeist_html_semantics::HtmlCaptureSubjectId>>)
 pub surgeist_html_semantics::HtmlSemanticFact::InputValueModeMissing(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::IsAttributeAuthorContext(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlCustomElementIsAuthorContext>)
@@ -1511,6 +1512,7 @@ pub surgeist_html_semantics::HtmlSemanticQuery::Indeterminateness
 pub surgeist_html_semantics::HtmlSemanticQuery::Inertness
 pub surgeist_html_semantics::HtmlSemanticQuery::InputEmailTypeMismatch
 pub surgeist_html_semantics::HtmlSemanticQuery::InputFileValueMissing
+pub surgeist_html_semantics::HtmlSemanticQuery::InputRangeValidity
 pub surgeist_html_semantics::HtmlSemanticQuery::InputSuggestionsSource
 pub surgeist_html_semantics::HtmlSemanticQuery::InputValueModeMissing
 pub surgeist_html_semantics::HtmlSemanticQuery::IsAttributeAuthorContext

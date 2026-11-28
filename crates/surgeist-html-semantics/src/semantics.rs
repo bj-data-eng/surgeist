@@ -42,6 +42,7 @@ mod address;
 mod anchor;
 mod document_title;
 pub use document_title::*;
+mod input_range_validity;
 mod input_validity;
 mod range;
 mod value_missing;
@@ -480,6 +481,8 @@ pub enum HtmlSemanticQuery {
     CheckableInputValueMissing,
     /// Required-current-value missingness for applicable Value-mode Inputs.
     InputValueModeMissing,
+    /// Intrinsic range underflow and overflow for an applicable captured Input.
+    InputRangeValidity,
     /// Required File Upload missingness from the captured selected-file list.
     InputFileValueMissing,
     /// Intrinsic type-mismatch flag of the captured Email Input current value.
@@ -663,6 +666,9 @@ impl HtmlSemanticQuery {
             }
             Self::OptionValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
+            }
+            Self::InputRangeValidity => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-min-and-max-attributes"
             }
             Self::InputValueModeMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required"
@@ -1148,6 +1154,7 @@ pub enum HtmlSemanticFact {
     SelectValueMissing(HtmlSemanticValue<bool>),
     CheckableInputValueMissing(HtmlSemanticValue<bool>),
     InputValueModeMissing(HtmlSemanticValue<bool>),
+    InputRangeValidity(HtmlSemanticValue<surgeist_html::elements::input::HtmlInputRangeValidity>),
     InputFileValueMissing(HtmlSemanticValue<bool>),
     InputEmailTypeMismatch(HtmlSemanticValue<bool>),
     TextareaValueMissing(HtmlSemanticValue<bool>),
@@ -3121,6 +3128,15 @@ impl<'a> HtmlSemanticSession<'a> {
                                     HtmlOptionReadbackOrigin::ValueAttribute,
                                 )?)
                             }
+                            HtmlSemanticQuery::InputRangeValidity => {
+                                HtmlSemanticFact::InputRangeValidity(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.input_range_validity(&request.subject, element)?
+                                })
+                            }
                             HtmlSemanticQuery::InputValueModeMissing => {
                                 HtmlSemanticFact::InputValueModeMissing(if foreign {
                                     HtmlSemanticValue::Unsupported(
@@ -3581,6 +3597,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         HtmlSemanticQuery::OptionValue => {
                             HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::InputRangeValidity => {
+                            HtmlSemanticFact::InputRangeValidity(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::InputValueModeMissing => {
                             HtmlSemanticFact::InputValueModeMissing(HtmlSemanticValue::Inapplicable)
