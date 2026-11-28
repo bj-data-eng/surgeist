@@ -5,5 +5,6 @@ mod output_rules;
 mod owner_reset;
 mod select_button_inert;
 mod select_normalization;
+mod select_notification;
 mod select_setter;
 mod text_control_value_setter_finish;

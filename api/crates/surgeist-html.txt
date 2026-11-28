@@ -3588,6 +3588,29 @@ pub surgeist_html::bounded::select::HtmlSelectFirstSelection::NoSelection
 pub surgeist_html::bounded::select::HtmlSelectFirstSelection::Selected
 pub surgeist_html::bounded::select::HtmlSelectFirstSelection::Selected::ordinal: usize
 pub surgeist_html::bounded::select::HtmlSelectFirstSelection::Unavailable
+pub enum surgeist_html::bounded::select::HtmlSelectNotificationAction
+pub surgeist_html::bounded::select::HtmlSelectNotificationAction::Dispatch(surgeist_html::bounded::select::HtmlSelectNotificationEvent)
+pub surgeist_html::bounded::select::HtmlSelectNotificationAction::MarkUserValidity
+pub surgeist_html::bounded::select::HtmlSelectNotificationAction::UpdateFallbackLabel
+pub surgeist_html::bounded::select::HtmlSelectNotificationAction::UpdateSelectedcontent
+pub enum surgeist_html::bounded::select::HtmlSelectNotificationEvent
+pub surgeist_html::bounded::select::HtmlSelectNotificationEvent::Change
+pub surgeist_html::bounded::select::HtmlSelectNotificationEvent::Input
+impl surgeist_html::bounded::select::HtmlSelectNotificationEvent
+pub const fn surgeist_html::bounded::select::HtmlSelectNotificationEvent::bubbles(self) -> bool
+pub const fn surgeist_html::bounded::select::HtmlSelectNotificationEvent::cancelable(self) -> bool
+pub const fn surgeist_html::bounded::select::HtmlSelectNotificationEvent::composed(self) -> bool
+pub enum surgeist_html::bounded::select::HtmlSelectNotificationReply
+pub surgeist_html::bounded::select::HtmlSelectNotificationReply::Dispatched(surgeist_html::bounded::select::HtmlSelectNotificationEvent)
+pub surgeist_html::bounded::select::HtmlSelectNotificationReply::FallbackLabelUpdated
+pub surgeist_html::bounded::select::HtmlSelectNotificationReply::SelectedcontentUpdated
+pub surgeist_html::bounded::select::HtmlSelectNotificationReply::UserValiditySet
+pub enum surgeist_html::bounded::select::HtmlSelectNotificationReplyError
+pub surgeist_html::bounded::select::HtmlSelectNotificationReplyError::Complete
+pub surgeist_html::bounded::select::HtmlSelectNotificationReplyError::WrongAction
+impl core::error::Error for surgeist_html::bounded::select::HtmlSelectNotificationReplyError
+impl core::fmt::Display for surgeist_html::bounded::select::HtmlSelectNotificationReplyError
+pub fn surgeist_html::bounded::select::HtmlSelectNotificationReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::bounded::select::HtmlSelectOperation
 pub surgeist_html::bounded::select::HtmlSelectOperation::AskForReset
 pub surgeist_html::bounded::select::HtmlSelectOperation::MultipleAdded
@@ -3617,6 +3640,14 @@ pub surgeist_html::bounded::select::HtmlSelectSetterAction::UpdateSelectedconten
 pub enum surgeist_html::bounded::select::HtmlSelectSetterReply
 pub surgeist_html::bounded::select::HtmlSelectSetterReply::Applied
 pub surgeist_html::bounded::select::HtmlSelectSetterReply::Matches(bool)
+pub enum surgeist_html::bounded::select::HtmlSelectUserToggleState
+pub surgeist_html::bounded::select::HtmlSelectUserToggleState::DisabledMultiple
+pub surgeist_html::bounded::select::HtmlSelectUserToggleState::EnabledMultiple
+pub surgeist_html::bounded::select::HtmlSelectUserToggleState::Single
+pub enum surgeist_html::bounded::select::HtmlSelectUserToggleTarget<'a>
+pub surgeist_html::bounded::select::HtmlSelectUserToggleTarget::DisabledMember
+pub surgeist_html::bounded::select::HtmlSelectUserToggleTarget::EnabledMember(&'a mut surgeist_html::elements::form::HtmlOptionFlags)
+pub surgeist_html::bounded::select::HtmlSelectUserToggleTarget::OutsideList
 pub enum surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction
 pub surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::Continue
 pub surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction::RememberNearestSelect
@@ -3655,6 +3686,10 @@ impl surgeist_html::bounded::select::HtmlSelectFirstSelectedCursor
 pub fn surgeist_html::bounded::select::HtmlSelectFirstSelectedCursor::action(&self) -> surgeist_html::bounded::select::HtmlSelectFirstSelectedAction
 pub fn surgeist_html::bounded::select::HtmlSelectFirstSelectedCursor::new(option_count: usize) -> Self
 pub fn surgeist_html::bounded::select::HtmlSelectFirstSelectedCursor::reply(&mut self, selected: core::option::Option<bool>) -> core::result::Result<(), surgeist_html::bounded::select::HtmlSelectCursorError>
+pub struct surgeist_html::bounded::select::HtmlSelectNotificationCursor
+impl surgeist_html::bounded::select::HtmlSelectNotificationCursor
+pub fn surgeist_html::bounded::select::HtmlSelectNotificationCursor::accept(&mut self, reply: surgeist_html::bounded::select::HtmlSelectNotificationReply) -> core::result::Result<(), surgeist_html::bounded::select::HtmlSelectNotificationReplyError>
+pub const fn surgeist_html::bounded::select::HtmlSelectNotificationCursor::action(&self) -> core::option::Option<surgeist_html::bounded::select::HtmlSelectNotificationAction>
 pub struct surgeist_html::bounded::select::HtmlSelectSetterCursor
 impl surgeist_html::bounded::select::HtmlSelectSetterCursor
 pub fn surgeist_html::bounded::select::HtmlSelectSetterCursor::action(&self) -> surgeist_html::bounded::select::HtmlSelectSetterAction
@@ -3670,6 +3705,7 @@ pub const fn surgeist_html::bounded::select::select_display_size_default(multipl
 pub fn surgeist_html::bounded::select::select_option_rule(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::select::HtmlSelectOptionRule
 pub const fn surgeist_html::bounded::select::select_type_value(multiple: bool) -> &'static str
 pub fn surgeist_html::bounded::select::selectedcontent_update(multiple: bool, disabled: bool, first_selected: surgeist_html::bounded::select::HtmlSelectFirstSelection) -> surgeist_html::bounded::select::HtmlSelectedcontentUpdate
+pub fn surgeist_html::bounded::select::toggle_select_option_for_user(state: surgeist_html::bounded::select::HtmlSelectUserToggleState, target: surgeist_html::bounded::select::HtmlSelectUserToggleTarget<'_>) -> core::option::Option<surgeist_html::bounded::select::HtmlSelectNotificationCursor>
 pub mod surgeist_html::bounded::template
 pub enum surgeist_html::bounded::template::HtmlSlotAssignAction
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::AppendIncomingToPendingSet
@@ -4579,6 +4615,7 @@ impl core::fmt::Display for surgeist_html::elements::form::HtmlOutputCursorError
 pub fn surgeist_html::elements::form::HtmlOutputCursorError::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::elements::form::HtmlSelectFlags
 impl surgeist_html::elements::form::HtmlSelectFlags
+pub fn surgeist_html::elements::form::HtmlSelectFlags::mark_user_validity(&mut self)
 pub const fn surgeist_html::elements::form::HtmlSelectFlags::new(user_validity: bool) -> Self
 pub fn surgeist_html::elements::form::HtmlSelectFlags::reset(&mut self)
 pub const fn surgeist_html::elements::form::HtmlSelectFlags::user_validity(&self) -> bool
