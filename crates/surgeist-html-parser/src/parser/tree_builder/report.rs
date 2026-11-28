@@ -1197,10 +1197,9 @@ mod tests {
     }
 
     #[test]
-    fn a_shadow_row_left_bound_to_no_node_is_not_published() {
-        // Shadow rows exist only in a contextual report that allows them.
-        let kind = crate::construction::report::UnboundRow::Shadow;
-        let mut input = Some(fragment(kind.literal(), true));
+    fn a_template_row_keyed_to_a_record_that_is_not_an_element_is_not_published() {
+        let literal = "<!doctype html><template>a</template>";
+        let mut input = Some(ordinary(literal, true));
         assert!(
             input
                 .as_mut()
@@ -1209,9 +1208,36 @@ mod tests {
                 .arena
                 .as_mut()
                 .unwrap()
-                .unbind_row_for_test(kind)
+                .rekey_template_for_test()
         );
-        assert!(HtmlParseReport::take_fragment(&mut input).is_err());
+        assert!(matches!(
+            HtmlParseReport::take_document(&mut input),
+            Err(SessionError::WrongToken)
+        ));
+        let kept = input.as_mut().expect("the seal is kept");
+        kept.release().unwrap();
+        super::super::tests::assert_released(&kept.parts.control);
+    }
+
+    #[test]
+    fn a_shadow_row_keyed_to_a_record_that_is_not_a_shadow_root_is_not_published() {
+        // Shadow rows exist only in a contextual report that allows them.
+        let literal = "<template shadowrootmode=open><p>B</p></template>";
+        let mut input = Some(fragment(literal, true));
+        assert!(
+            input
+                .as_mut()
+                .unwrap()
+                .parts
+                .arena
+                .as_mut()
+                .unwrap()
+                .rekey_shadow_for_test()
+        );
+        assert!(matches!(
+            HtmlParseReport::take_fragment(&mut input),
+            Err(SessionError::WrongToken)
+        ));
         let kept = input.as_mut().expect("the seal is kept");
         kept.release().unwrap();
         super::super::tests::assert_released(&kept.parts.control);

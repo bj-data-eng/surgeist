@@ -1,6 +1,5 @@
 //! The session's side of the record operations of HTML's construction storage: what the
 //! controller admits and records for each operation, and the calls that issue them.
-use super::template::template_slot_of;
 use super::*;
 use surgeist_html::construction::HtmlConstructionCause;
 use surgeist_html::{
@@ -609,22 +608,30 @@ pub(super) fn associated_document_parent_of(
     parent: usize,
 ) -> Result<bool, SessionError> {
     let root = payloads.tree_root(control, storage, parent)?;
-    associated_root_of(payloads, fragment, control, storage, root)
+    associated_root_of(fragment, control, storage, root)
 }
 
 /// Whether the tree rooted at `root`, found along parent edges, is a fragment that an associated
 /// document owns. Only a fragment has an owner, and an owned fragment has no parent, so the root
 /// decides.
 pub(super) fn associated_root_of(
-    payloads: &PayloadStorage,
     fragment: &Option<FragmentContextStorage>,
     control: &mut ParseControl,
     storage: &HtmlConstructionStorage,
     root: usize,
 ) -> Result<bool, SessionError> {
     use surgeist_html::construction::HtmlFragmentOwner;
-    control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-    let record = storage.node_at(root).ok_or(SessionError::ForeignNode)?;
+    // The visit that reads the record of a template's owner is charged with the visit of the root.
+    let record = storage.node_at(root);
+    let template_owner = record.as_ref().is_some_and(|record| {
+        matches!(
+            record.fragment_owner(),
+            Some(HtmlFragmentOwner::Template(_))
+        )
+    });
+    let visits = if template_owner { 2 } else { 1 };
+    control.charge(HtmlParseWorkCategory::RecordVisit, visits)?;
+    let record = record.ok_or(SessionError::ForeignNode)?;
     match record.fragment_owner() {
         None => Ok(false),
         Some(HtmlFragmentOwner::ShadowHost(_)) => Ok(fragment.is_none()),
@@ -634,9 +641,15 @@ pub(super) fn associated_root_of(
                 .node_by_result_id(&template)
                 .map_err(|_| SessionError::ForeignNode)?
                 .position();
-            let (_, state) =
-                template_slot_of(payloads, fragment, control, storage, template_position)?;
-            if state.contents != root {
+            // The record of the owner names its contents, so the check reads the record and
+            // searches no table: the contents of the owner must be the fragment at `root`.
+            if !SessionStorage::html_local_in(control, storage, template_position, "template")? {
+                return Err(SessionError::WrongToken);
+            }
+            let owner = storage
+                .node_at(template_position)
+                .ok_or(SessionError::ForeignNode)?;
+            if owner.template_contents().map(|node| node.position()) != Some(root) {
                 return Err(SessionError::TemplateMetadataUnavailable);
             }
             Ok(false)

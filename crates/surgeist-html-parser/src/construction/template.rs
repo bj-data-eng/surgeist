@@ -1,4 +1,4 @@
-//! Source-defined template documents and state in the existing arena registry.
+//! Source-defined template documents, and the metadata of templates in a table keyed by node.
 //! HTML 877d6146487f: appropriate template contents owner, creation and adoption.
 
 use super::*;
@@ -39,7 +39,9 @@ pub(super) struct PreparedDocuments {
     pub(super) context: Option<u32>,
     /// The entry that names the document of the contents fragment of a template.
     contents_context: Option<u32>,
-    facts: Option<usize>,
+    /// Whether the record is a `template` element whose row of metadata is admitted in the table
+    /// of templates and written once the record exists.
+    template: bool,
     /// The creation state of the record when it is not the default of its namespace. Its row is
     /// admitted in the table of creation states and written once the record exists.
     pub(super) creation: Option<context::ElementCreationState>,
@@ -110,13 +112,14 @@ impl SessionStorage {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             self.validate_document_ref(c, &context.document)?;
         }
+        for (node, _) in self.payloads.facts.templates.iter() {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            self.template_row(c, node)?;
+        }
         for payload in &self.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             match payload {
                 RetainedPayload::BaseDocument { .. } => self.validate_base_facts(c)?,
-                RetainedPayload::Template { node, .. } => {
-                    self.template_slot(c, node.ok_or(SessionError::TemplateMetadataUnavailable)?)?;
-                }
                 RetainedPayload::PiAttributes { node, ready, .. } => {
                     let node = node.ok_or(SessionError::ProcessingInstructionMapUnavailable)?;
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -325,21 +328,22 @@ impl SessionStorage {
         }
         Err(SessionError::NodeDocumentUnavailable)
     }
-    pub(super) fn template_slot(
+    /// The index of the row of the template at `node` in the table of templates and its metadata.
+    pub(super) fn template_row(
         &self,
         c: &mut ParseControl,
         node: usize,
     ) -> Result<(usize, TemplateMetadata), SessionError> {
         let storage = &self.construction;
-        self.template_slot_in(c, storage, node)
+        self.template_row_in(c, storage, node)
     }
-    pub(super) fn template_slot_in(
+    pub(super) fn template_row_in(
         &self,
         c: &mut ParseControl,
         storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<(usize, TemplateMetadata), SessionError> {
-        template_slot_of(&self.payloads, &self.fragment, c, storage, node)
+        template_row_of(&self.payloads, &self.fragment, c, storage, node)
     }
     /// The cache is a real identity relation, with no fabricated ordinary edge.
     pub(super) fn appropriate_contents_document(
@@ -437,26 +441,11 @@ impl SessionStorage {
             if !template {
                 return Ok(None);
             }
-            let prepared = self.prepare_payload_slot_owned(c)?;
-            let records = self.construction.len();
-            let contents = successor(c, records)?;
-            let facts = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::Template {
-                        node: None,
-                        state: TemplateMetadata::fresh(
-                            contents,
-                            HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                        ),
-                    },
-                )
-                .map_err(|_| latch_registry_row(c))?;
+            self.payloads.facts.templates.admit(c, 1)?;
             return Ok(Some(PreparedDocuments {
                 context: None,
                 contents_context: None,
-                facts: Some(facts),
+                template: true,
                 creation: None,
             }));
         };
@@ -489,11 +478,6 @@ impl SessionStorage {
             ),
         ])?;
         self.reserve_records(c, native)?;
-        c.reserve_vector_geometric(
-            &mut self.payloads.values,
-            &mut self.payloads.allocation,
-            facts,
-        )?;
         let contents_document = if template {
             Some(self.appropriate_contents_document(c, &document)?)
         } else {
@@ -504,31 +488,13 @@ impl SessionStorage {
             Some(document) => Some(self.intern_document(c, document)?),
             None => None,
         };
-        let facts = if template {
-            let prepared = self.prepare_payload_slot_owned(c)?;
-            let records = self.construction.len();
-            let contents = successor(c, records)?;
-            let slot = self
-                .payloads
-                .push_row(
-                    prepared,
-                    RetainedPayload::Template {
-                        node: None,
-                        state: TemplateMetadata::fresh(
-                            contents,
-                            HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
-                        ),
-                    },
-                )
-                .map_err(|_| latch_registry_row(c))?;
-            Some(slot)
-        } else {
-            None
-        };
+        if template {
+            self.payloads.facts.templates.admit(c, 1)?;
+        }
         Ok(Some(PreparedDocuments {
             context: Some(context),
             contents_context,
-            facts,
+            template,
             creation: None,
         }))
     }
@@ -583,20 +549,16 @@ impl SessionStorage {
         let Some(PreparedDocuments {
             context,
             contents_context,
-            facts,
+            template: has_row,
             creation,
         }) = prepared
         else {
             return self.allocate_native_record(c, kind, template, attributes, units);
         };
-        payload_write::<Option<usize>>(c, u64::from(facts.is_some()))?;
         payload_write::<u32>(
             c,
             count_set([context.is_some(), contents_context.is_some()]) as u64,
         )?;
-        if facts.is_some() {
-            payload_write::<usize>(c, 1)?;
-        }
         let node = self.allocate_native_record(c, kind, template, attributes, units)?;
         if let Some(entry) = context {
             self.set_context(c, node.index, entry)?;
@@ -612,16 +574,18 @@ impl SessionStorage {
             let contents = successor(c, node.index)?;
             self.set_context(c, contents, entry)?;
         }
-        if let Some(slot) = facts {
-            let Some(RetainedPayload::Template { node: bound, state }) =
-                self.payloads.values.get_mut(slot)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *bound = Some(node.index);
-            state.contents = successor(c, node.index)?;
+        if has_row {
+            let contents = successor(c, node.index)?;
             self.payloads
-                .join_row(slot)
+                .facts
+                .templates
+                .push(
+                    node.index,
+                    TemplateMetadata::fresh(
+                        contents,
+                        HtmlTemplateFreshInsertionState::NullTargetAndMarkers,
+                    ),
+                )
                 .map_err(|_| latch_registry_row(c))?;
         }
         Ok(node)
@@ -749,7 +713,7 @@ impl ParserArenaSession {
         let scope = storage.index(c, scope)?;
         storage.container(c, scope)?;
         let node = storage.index(c, node)?;
-        let (slot, mut state) = storage.template_slot(c, node)?;
+        let (index, mut state) = storage.template_row(c, node)?;
         let name = storage
             .form_attribute(c, node, "for")?
             .ok_or(SessionError::WrongToken)?;
@@ -769,9 +733,7 @@ impl ParserArenaSession {
         state.start = Some(start);
         state.end = end;
         payload_write::<TemplateMetadata>(c, 3)?;
-        let Some(RetainedPayload::Template { state: stored, .. }) =
-            storage.payloads.values.get_mut(slot)
-        else {
+        let Some(stored) = storage.payloads.facts.templates.row_mut(index) else {
             return Err(latch_registry_row(c));
         };
         *stored = state;
@@ -817,7 +779,7 @@ impl ParserArenaSession {
         }
         let storage = self.active_mut()?;
         let index = storage.index(c, node)?;
-        let (slot, mut state) = storage.template_slot(c, index)?;
+        let (row, mut state) = storage.template_row(c, index)?;
         if state.target.is_none() {
             return Ok(());
         }
@@ -839,9 +801,7 @@ impl ParserArenaSession {
         state.start = None;
         state.end = None;
         payload_write::<TemplateMetadata>(c, 3)?;
-        let Some(RetainedPayload::Template { state: stored, .. }) =
-            storage.payloads.values.get_mut(slot)
-        else {
+        let Some(stored) = storage.payloads.facts.templates.row_mut(row) else {
             return Err(latch_registry_row(c));
         };
         *stored = state;
@@ -858,7 +818,7 @@ impl ParserArenaSession {
             CreationContext::Ordinary => Ok(false),
             CreationContext::Template(node) => {
                 let index = storage.index(c, node)?;
-                storage.template_slot(c, index)?;
+                storage.template_row(c, index)?;
                 Ok(true)
             }
         }
@@ -883,7 +843,7 @@ impl ParserArenaSession {
     ) -> Result<TemplateState, SessionError> {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
-        let (_, state) = storage.template_slot(c, index)?;
+        let (_, state) = storage.template_row(c, index)?;
         Ok(TemplateState {
             contents: storage.node(c, state.contents)?,
             target: state.target.map(|n| storage.node(c, n)).transpose()?,
@@ -893,7 +853,10 @@ impl ParserArenaSession {
     }
 }
 
-pub(super) fn template_slot_of(
+/// The index of the row of the template at `node` and its metadata. The search charges the keys
+/// it reads, and the metadata is checked against the record and, for a shadow root, against the
+/// effect that attached it.
+pub(super) fn template_row_of(
     payloads: &PayloadStorage,
     fragment: &Option<FragmentContextStorage>,
     c: &mut ParseControl,
@@ -903,37 +866,30 @@ pub(super) fn template_slot_of(
     if !SessionStorage::html_local_in(c, storage, node, "template")? {
         return Err(SessionError::WrongToken);
     }
-    if let Some(slot) = payloads.joined(c, node, Join::Template)? {
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let Some(RetainedPayload::Template {
-            node: Some(bound),
-            state,
-        }) = payloads.values.get(slot)
-            && *bound == node
-        {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            let view = storage.node_at(node).ok_or_else(|| latch_registry_row(c))?;
-            if view.template_contents().map(|node| node.position()) != Some(state.contents)
-                || (view.template_contents_kind()
-                    == Some(HtmlTemplateContentsKind::ShadowReference)
-                    && !context::shadow_template_contents_of(
-                        fragment,
-                        c,
-                        node,
-                        state.contents,
-                        state.shadow_effect,
-                    )?)
-            {
-                return Err(SessionError::TemplateMetadataUnavailable);
-            }
-            c.charge(
-                HtmlParseWorkCategory::CopyByte,
-                mem::size_of::<TemplateMetadata>() as u64,
-            )?;
-            return Ok((slot, *state));
-        }
+    let templates = &payloads.facts.templates;
+    // The keys of the search and the two visits that read the record are one batch.
+    let Some(index) = templates.find_charged(c, node, 2)? else {
+        return Err(SessionError::TemplateInsertionStateUnavailable);
+    };
+    let state = templates.row(index).ok_or_else(|| latch_registry_row(c))?;
+    let view = storage.node_at(node).ok_or_else(|| latch_registry_row(c))?;
+    if view.template_contents().map(|node| node.position()) != Some(state.contents)
+        || (view.template_contents_kind() == Some(HtmlTemplateContentsKind::ShadowReference)
+            && !context::shadow_template_contents_of(
+                fragment,
+                c,
+                node,
+                state.contents,
+                state.shadow_effect,
+            )?)
+    {
+        return Err(SessionError::TemplateMetadataUnavailable);
     }
-    Err(SessionError::TemplateInsertionStateUnavailable)
+    c.charge(
+        HtmlParseWorkCategory::CopyByte,
+        mem::size_of::<TemplateMetadata>() as u64,
+    )?;
+    Ok((index, *state))
 }
 
 /// Report preparation inspects one `DocumentFacts` per Document, so its row size is a work figure.

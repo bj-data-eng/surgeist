@@ -120,9 +120,18 @@ fn a_join_naming_another_row_is_not_the_attribute_map_of_a_processing_instructio
             Some(&surgeist_html::values::DocumentString::from("b"))
         );
         let good = storage.payloads.node_joins[node];
+        // The row of another kind: the registry holds the strings of the map beside it.
+        let own = good.get(Join::ProcessingInstructionAttributes).unwrap();
+        let other = storage
+            .payloads
+            .values
+            .iter()
+            .position(|row| !matches!(row, RetainedPayload::PiAttributes { .. }))
+            .expect("the registry holds a row that is not the map");
+        assert_ne!(other, own);
         *storage.payloads.node_joins[node]
             .rows
-            .get_mut(Join::ProcessingInstructionAttributes) = Some(joined_cell(0).unwrap());
+            .get_mut(Join::ProcessingInstructionAttributes) = Some(joined_cell(other).unwrap());
         assert_eq!(
             storage.pi_attribute(c, node, "a").err(),
             Some(SessionError::ProcessingInstructionMapUnavailable)

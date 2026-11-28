@@ -119,7 +119,8 @@ fn a_concat_that_names_itself_outgrows_the_scratch_and_faults_the_cursor() {
 // the original name of an adjusted foreign element, which the row keeps as history.
 #[test]
 fn a_leaf_whose_backing_is_not_a_string_row_faults_the_cursor() {
-    let mut report = parse("<svg><foreignObject>");
+    // The style is the row of another kind that the registry holds.
+    let mut report = parse("<style>a</style><svg><foreignObject>");
     let index = first_group(&mut report, |g| {
         matches!(
             g.body,
@@ -833,13 +834,14 @@ fn a_tree_document_naming_a_missing_node_is_an_unresolved_reference() {
 #[test]
 fn a_template_naming_a_missing_node_faults_the_cursor() {
     let mut report = parse("<template><p>A</template>");
-    corrupt_row(&mut report, |row| match row {
-        RetainedPayload::Template { state, .. } => {
-            state.contents = usize::MAX;
-            true
-        }
-        _ => false,
-    });
+    // The row of the template is in the table of templates, not in the registry.
+    frozen(&mut report)
+        .payloads
+        .facts
+        .templates
+        .row_mut(0)
+        .expect("a template row")
+        .contents = usize::MAX;
     assert_eq!(metadata_fault(&report), Some(fault(Kind::Node)));
 }
 

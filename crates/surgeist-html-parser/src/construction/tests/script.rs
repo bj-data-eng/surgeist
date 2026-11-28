@@ -938,6 +938,9 @@ fn entries_of(session: &ParserArenaSession) -> u64 {
     (2 * storage.construction.len()
         + storage.payloads.values.len()
         + facts.nonces.len()
+        + facts.causes.len()
+        + facts.templates.len()
+        + facts.shadows.len()
         + storage.payloads.detail_origins.len()
         + facts.documents.len()
         + facts.contexts.entries().len()) as u64

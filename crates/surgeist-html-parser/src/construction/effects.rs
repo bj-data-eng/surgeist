@@ -492,7 +492,7 @@ impl SessionStorage {
                     .template_contents()
                     .is_some()
                 {
-                    let (_, template) = self.template_slot(c, node)?;
+                    let (_, template) = self.template_row(c, node)?;
                     let target = self.appropriate_contents_document(c, &document)?;
                     if self.node_document_ref(c, template.contents)? != target {
                         self.start_effect(
