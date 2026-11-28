@@ -375,6 +375,43 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     let mut hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
     let host = owner.borrow().hosts[0].id;
+    assert_eq!(
+        hosted.window_focus_changed_during_navigation(&session.dom(), top.global(), &cancel),
+        Ok(false)
+    );
+    assert_eq!(
+        hosted.window_focus_changed_during_navigation(
+            &session.dom(),
+            top.global(),
+            &AtomicBool::new(true),
+        ),
+        Err(DomHostedRuntimeError::Cancelled)
+    );
+    let (mut foreign, foreign_top, _, _) = fixture();
+    for (dom, global) in [
+        (&mut foreign, top.global()),
+        (&mut session, foreign_top.global()),
+    ] {
+        assert_eq!(
+            hosted.window_focus_changed_during_navigation(&dom.dom(), global, &cancel),
+            Err(DomHostedRuntimeError::Binding)
+        );
+    }
+    {
+        // Seed this exact private row to distinguish retaining its current value
+        // from rebuilding the constructor default during destruction.
+        let mut state = owner.borrow_mut();
+        let (h, t, c, w) = state.find_window(top.global(), &cancel, || Ok(())).unwrap();
+        state.hosts[h].top_levels[t]
+            .group
+            .as_mut()
+            .unwrap()
+            .clusters[c]
+            .agent
+            .windows
+            .rows[w]
+            .focus_changed_during_navigation = true;
+    }
     let task = hosted
         .destroy_top_level(&mut session.dom(), top.navigable(), &cancel)
         .unwrap();
@@ -388,6 +425,10 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     }
     assert!(complete);
     assert_eq!(counts(&hosted), (1, 1, 1));
+    assert_eq!(
+        hosted.window_focus_changed_during_navigation(&session.dom(), top.global(), &cancel),
+        Ok(true)
+    );
     assert!(
         owner
             .borrow_mut()
@@ -421,6 +462,10 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
         DomSourceEdit::remove_attribute(subject, "open"),
     );
     assert!(owner.borrow().hosts[0].top_levels.is_empty());
+    assert_eq!(
+        hosted.window_focus_changed_during_navigation(&session.dom(), top.global(), &cancel),
+        Err(DomHostedRuntimeError::Binding)
+    );
     hosted
         .destroy_host(&mut session.dom(), host, &cancel)
         .unwrap();
