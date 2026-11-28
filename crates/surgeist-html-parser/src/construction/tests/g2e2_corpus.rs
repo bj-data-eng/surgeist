@@ -141,3 +141,50 @@ fn every_root_a_parse_asks_for_is_the_root_a_full_climb_finds() {
         tally.counts.cross
     );
 }
+
+/// The counts of the roots a parse of `source` asked for, with detail off.
+fn parse_counts(source: &str) -> Counts {
+    counts::reset();
+    let report = crate::HtmlDocumentParseRequest::offline(
+        crate::HtmlSource::utf8(source),
+        g2_d2::corpus_limits(),
+    )
+    .parse()
+    .unwrap();
+    drop(report);
+    let counts = counts::read();
+    counts::reset();
+    counts
+}
+
+/// The adoption agency algorithm detaches a node with children and inserts it again below another
+/// element: the records below it may change root, so the announcement starts a new generation,
+/// and every cached root that is read afterwards is the root a full climb finds. The oracle is the
+/// parent edges, compared with each cached answer the parse reads.
+#[test]
+fn an_adoption_agency_reroot_leaves_every_cached_root_exact() {
+    let counts = parse_counts(
+        "<!doctype html><a href=x><b><i><p>x</b>y</i>z</p></a><div><a>1<div>2</a>3</div></div>",
+    );
+    assert!(counts.cross >= 1, "{counts:?}");
+    assert!(counts.verified >= 1, "{counts:?}");
+}
+
+/// Foster parenting inserts the content of a table before the table, in a tree whose cached roots
+/// were found through the table: each root read afterwards is the one a full climb finds.
+#[test]
+fn foster_parenting_leaves_every_cached_root_exact() {
+    let counts = parse_counts(
+        "<!doctype html><table>t<div><b>x</b></div><tr><td>a</td></tr><span>s</span></table>",
+    );
+    assert!(counts.bare >= 1, "{counts:?}");
+    assert!(counts.verified >= 1, "{counts:?}");
+}
+
+/// A document that creates nodes and inserts none of them asks for the root of each node it
+/// inserts: the number of roots asked is at least the number of nodes created below the Document.
+#[test]
+fn a_root_is_asked_for_each_node_a_parse_inserts() {
+    let counts = parse_counts("<!doctype html><p>a</p><p>b</p><p>c</p>");
+    assert!(counts.queries >= 3, "{counts:?}");
+}
