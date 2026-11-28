@@ -789,14 +789,11 @@ fn root_and_child_publication_bytes() -> (usize, usize, usize) {
         .insert(&mut probe_control, &probe_root, &probe_node, None, None)
         .unwrap();
     let root_capacity = probe_control.usage().actual_capacity_bytes as usize;
-    // The freeze frees the column of document cells before the first bank of the publication.
-    let column = probe_session
-        .active()
-        .unwrap()
-        .payloads
-        .facts
-        .contexts
-        .column_capacity_bytes();
+    // The freeze frees the column of document cells and the bank of cached roots before the first
+    // bank of the publication.
+    let payloads = &probe_session.active().unwrap().payloads;
+    let column =
+        payloads.facts.contexts.column_capacity_bytes() + payloads.tree_roots.capacity_bytes();
     let mut probe_output = frozen(probe_session, &mut probe_control);
     probe_output.release(&mut probe_control).unwrap();
     storage_zero(&probe_control);
@@ -875,14 +872,11 @@ fn freeze_figures(children: usize) -> (u64, u64, u64, u64, usize) {
         session.insert(&mut c, &root, &node, None, None).unwrap();
     }
     let records = session.active().unwrap().construction.len();
-    // The column of document cells is freed by the freeze, apart from the banks of publication.
-    let column = session
-        .active()
-        .unwrap()
-        .payloads
-        .facts
-        .contexts
-        .column_capacity_bytes() as u64;
+    // The column of document cells and the bank of cached roots are freed by the freeze, apart
+    // from the banks of publication.
+    let payloads = &session.active().unwrap().payloads;
+    let column = (payloads.facts.contexts.column_capacity_bytes()
+        + payloads.tree_roots.capacity_bytes()) as u64;
     let held_before = c.usage().actual_capacity_bytes - column;
     let transient_before = c
         .usage()

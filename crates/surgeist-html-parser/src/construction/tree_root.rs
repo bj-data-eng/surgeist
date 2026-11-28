@@ -1,4 +1,4 @@
-//! The topmost ancestor of a record, cached in its node-join cell.
+//! The topmost ancestor of a record, cached in a bank of cells beside the node-join bank.
 //!
 //! Several per-element questions are asked of the tree a record sits in, not
 //! of its ancestors one by one: whether that tree is a declarative shadow
@@ -23,6 +23,12 @@
 //! read when the answer is needed, so attaching or releasing template or
 //! shadow contents needs no announcement. A generation counter that can no
 //! longer advance disables the cache instead of wrapping.
+//!
+//! The cells are build-only. They are a bank of one cell for each record, held beside the
+//! node-join bank: it is made with it, grows at the same instants to the same capacity, and a
+//! record's cell is written when the record is created. Publishing the parse frees the bank, and
+//! a root asked for after that is found by the climb alone.
+use super::session_error::latch_registry_row;
 use super::*;
 
 /// The root a record last found and the generation it found it in.
@@ -35,6 +41,121 @@ pub(super) enum TreeRootCell {
         root: NonZeroU32,
         stamp: NonZeroU32,
     },
+}
+
+/// The bank of the cached roots, one cell for each record of the parse while it builds.
+pub(super) enum TreeRootBank {
+    /// The cells of the records, in the order of the records.
+    Building {
+        cells: Vec<TreeRootCell>,
+        allocation: VectorCapacity<TreeRootCell>,
+    },
+    /// The parse is published: the bank is freed and no root is cached.
+    Published,
+}
+
+impl TreeRootBank {
+    /// The empty bank of a session that holds no record yet.
+    pub(super) fn new(control: &mut ParseControl) -> Result<Self, SessionError> {
+        let (cells, allocation) = control.new_vector()?;
+        Ok(Self::Building { cells, allocation })
+    }
+    /// The cell of the record at `node`, when the bank holds it.
+    fn cell(&self, node: usize) -> Option<TreeRootCell> {
+        match self {
+            Self::Building { cells, .. } => cells.get(node).copied(),
+            Self::Published => None,
+        }
+    }
+    /// The cell of the record at `node` for a write, when the bank holds it.
+    fn cell_mut(&mut self, node: usize) -> Option<&mut TreeRootCell> {
+        match self {
+            Self::Building { cells, .. } => cells.get_mut(node),
+            Self::Published => None,
+        }
+    }
+    /// Reserves room for `count` more cells when the bank has none, as the node-join bank does at
+    /// the same instant: the bank holds as many cells as records, and the node-join bank grows when
+    /// its length and `count` pass its capacity. A reservation is a prepared slot in a test build,
+    /// at the caller, so that a stop after it is exercised. A bank that is published has no room
+    /// to make.
+    #[cfg_attr(test, track_caller)]
+    pub(super) fn admit_growth(
+        &mut self,
+        control: &mut ParseControl,
+        count: usize,
+    ) -> Result<(), SessionError> {
+        let Self::Building { cells, allocation } = self else {
+            return Ok(());
+        };
+        let full = cells
+            .len()
+            .checked_add(count)
+            .is_none_or(|needed| needed > cells.capacity());
+        if full {
+            control.reserve_vector_geometric(cells, allocation, count)?;
+            #[cfg(test)]
+            control.note_prepared_slot(std::panic::Location::caller());
+        }
+        Ok(())
+    }
+    /// Writes the empty cells of `count` records created from position `first`. The room was
+    /// reserved by [`Self::admit_growth`]; a bank that does not hold exactly the records before
+    /// `first`, or has no room, is the registry-row defect and is unchanged.
+    pub(super) fn push_empty(&mut self, first: usize, count: usize) -> Result<(), SessionError> {
+        let Self::Building { cells, .. } = self else {
+            return Ok(());
+        };
+        let end = cells
+            .len()
+            .checked_add(count)
+            .ok_or_else(SessionError::registry_row)?;
+        if cells.len() != first || end > cells.capacity() {
+            return Err(SessionError::registry_row());
+        }
+        for _ in 0..count {
+            cells.push(TreeRootCell::Empty);
+        }
+        Ok(())
+    }
+    /// The bytes one record's cell adds to a creation's copy, when the bank holds cells.
+    pub(super) fn cell_bytes(&self) -> usize {
+        match self {
+            Self::Building { .. } => mem::size_of::<TreeRootCell>(),
+            Self::Published => 0,
+        }
+    }
+    /// Frees the bank and answers every later root by the climb alone. A bank already published
+    /// has nothing to free. A refusal of the release leaves the bank published: the vector is
+    /// returned to the allocator by the ticket's owner.
+    pub(super) fn publish(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
+        match std::mem::replace(self, Self::Published) {
+            Self::Building { cells, allocation } => release_vector(control, cells, allocation),
+            Self::Published => Ok(()),
+        }
+    }
+    /// The number of cells, for a test that compares the bank with the records.
+    #[cfg(test)]
+    pub(super) fn len(&self) -> usize {
+        match self {
+            Self::Building { cells, .. } => cells.len(),
+            Self::Published => 0,
+        }
+    }
+    /// The bytes of the bank's vector, which the parse holds until it is published.
+    #[cfg(test)]
+    pub(super) fn capacity_bytes(&self) -> usize {
+        self.capacity()
+            .saturating_mul(mem::size_of::<TreeRootCell>())
+    }
+    /// The capacity of the bank, for a test that compares it with the node-join bank.
+    #[cfg(test)]
+    pub(super) fn capacity(&self) -> usize {
+        match self {
+            Self::Building { cells, .. } => cells.capacity(),
+            Self::Published => 0,
+        }
+    }
 }
 
 /// What a topology change does to the cached roots, decided before it is
@@ -54,7 +175,7 @@ impl PayloadStorage {
     /// The root cached for `node`, when its cell is current.
     fn cached_root(&self, node: usize) -> Option<usize> {
         let stamp = self.tree_stamp?;
-        match self.node_joins.get(node)?.tree_root {
+        match self.tree_roots.cell(node)? {
             TreeRootCell::Cached { root, stamp: held } if held == stamp => cell_slot(root),
             _ => None,
         }
@@ -134,19 +255,24 @@ impl PayloadStorage {
         node: usize,
     ) -> Result<usize, SessionError> {
         let (root, stop) = self.climb_to_root(control, storage, node)?;
-        let (Some(stamp), Some(cell_root)) = (self.tree_stamp, joined_cell(root).ok()) else {
+        let (Some(stamp), Some(cell_root), TreeRootBank::Building { .. }) =
+            (self.tree_stamp, joined_cell(root).ok(), &self.tree_roots)
+        else {
             return Ok(root);
         };
         let mut at = node;
         for _ in 0..storage.len() {
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-            if let Some(cell) = self.node_joins.get_mut(at) {
-                cell.tree_root = TreeRootCell::Cached {
-                    root: cell_root,
-                    stamp,
-                };
-            }
+            // The bank holds a cell for every record, so a record the climb passes has one.
+            let cell = self
+                .tree_roots
+                .cell_mut(at)
+                .ok_or_else(|| latch_registry_row(control))?;
+            *cell = TreeRootCell::Cached {
+                root: cell_root,
+                stamp,
+            };
             if at == stop {
                 return Ok(root);
             }
@@ -171,8 +297,8 @@ impl PayloadStorage {
     }
     /// Makes the cell of `node` stale. The caller has charged the write.
     fn forget_tree_root(&mut self, node: usize) {
-        if let Some(cell) = self.node_joins.get_mut(node) {
-            cell.tree_root = TreeRootCell::Empty;
+        if let Some(cell) = self.tree_roots.cell_mut(node) {
+            *cell = TreeRootCell::Empty;
         }
     }
     /// Makes every cell stale, or disables the cache when no later generation

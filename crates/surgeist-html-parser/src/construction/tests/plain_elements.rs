@@ -5,7 +5,7 @@ use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, 
 
 /// Creates `elements` plain `span` elements through the tag path of the parser, in a session of
 /// an empty ordinary Document, and hands the session to `then` before releasing it.
-fn with_plain_elements<T>(
+pub(super) fn with_plain_elements<T>(
     elements: usize,
     then: impl FnOnce(&mut ParseControl, &mut ParserArenaSession) -> T,
 ) -> T {

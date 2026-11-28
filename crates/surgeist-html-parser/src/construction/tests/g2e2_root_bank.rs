@@ -3,6 +3,7 @@
 //! The cache of a record's root is build-only state of the questions the parse asks of a tree.
 //! A node's join cell does not carry it: the cells of the roots are a bank beside the node-join
 //! bank, and a published parse retains none of it.
+use super::plain_elements::with_plain_elements;
 use super::*;
 use std::mem::size_of;
 use std::num::NonZeroU32;
@@ -52,4 +53,43 @@ fn a_published_parse_retains_only_the_node_join_bank_for_its_records() {
         capacity * size_of::<NodeJoins>(),
         60 * nodes.next_power_of_two() as usize
     );
+}
+
+/// While a parse builds, the bank of cached roots holds one cell for each record and has the
+/// capacity of the node-join bank, whatever number of records the parse has created: the two
+/// banks are made together and grow at the same creation, to the same capacity. The oracle is the
+/// records the session holds, and the node-join bank, which is a bank of one cell for each.
+#[test]
+fn the_root_bank_has_a_cell_for_each_record_and_the_capacity_of_the_node_join_bank() {
+    for elements in [0, 1, 2, 3, 4, 5, 8, 9, 63, 64, 65] {
+        with_plain_elements(elements, |_, session| {
+            let storage = session.active().unwrap();
+            let records = storage.construction.len();
+            // The session holds the records its fixture made and one for each element.
+            assert!(records > elements, "{elements} elements");
+            let payloads = &storage.payloads;
+            assert_eq!(payloads.node_joins.len(), records, "{elements} elements");
+            assert_eq!(payloads.tree_roots.len(), records, "{elements} elements");
+            assert_eq!(
+                payloads.tree_roots.capacity(),
+                payloads.node_joins.capacity(),
+                "{elements} elements"
+            );
+        });
+    }
+}
+
+/// The bank is freed when the parse is published: a published parse retains no cell and no
+/// capacity for the roots it asked for.
+#[test]
+fn a_published_parse_holds_no_root_bank() {
+    let request = crate::HtmlDocumentParseRequest::offline(
+        crate::HtmlSource::utf8("<p><b>a</b></p><div><i>b</i></div>"),
+        g2_d2::corpus_limits(),
+    );
+    let report = request.parse().unwrap();
+    let payloads = &report.history().storage().payloads;
+    assert!(!payloads.node_joins.is_empty());
+    assert_eq!(payloads.tree_roots.len(), 0);
+    assert_eq!(payloads.tree_roots.capacity(), 0);
 }
