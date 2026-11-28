@@ -511,6 +511,7 @@ fn an_installed_hook_delegates_its_document_to_a_direct_cross_realm_call() {
     dialog_close::external_source_service_resumes_after_callback_adoption();
     dialog_close::listener_report_refusal_retains_the_original_close();
     dialog_methods::show_retains_the_reached_native_focusing_request();
+    dialog_methods::show_modal_settles_the_open_reaction_before_reporting_a_native_failure();
     table_parts::table_part_setter_resumes_after_modal_descendant_watcher();
     marquee::stop_marquee_preserves_native_state_on_source_work_refusal();
     element_mixin::borrowed_accessors_keep_native_includers_across_creation_realms();

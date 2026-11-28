@@ -97,3 +97,84 @@ pub(super) fn show_retains_the_reached_native_focusing_request() {
         *operation
     );
 }
+
+pub(super) fn show_modal_settles_the_open_reaction_before_reporting_a_native_failure() {
+    use crate::{
+        document_scripting::guest::tests::projected_node_id,
+        internal::dom_source::DomSourceDriveError,
+    };
+    use surgeist_dom::source::DomSourceInvariantReason;
+    use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogOperation};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let dom = Dom::new(scripting_dom_limits(200_000, 0)).unwrap();
+    let mut session = scripting_session(dom, 4);
+    let mut hosted = session.hosted_execution();
+    let owner = hosted
+        .create_headless_host(&mut session.dom(), &cancel)
+        .unwrap();
+    let target = hosted
+        .create_top_level(&mut session.dom(), owner, &cancel)
+        .unwrap();
+    let mut host = attach_public_nodes(session, target, cancel, 200_000, 2_000_000);
+    let permit = host.permit().unwrap();
+    let subject = host.in_document(&permit, |scope| {
+        let result = evaluate(scope, r#"
+            (() => {
+                class WatchedDialog extends HTMLDialogElement {
+                    static observedAttributes = ['open'];
+                    attributeChangedCallback(name, oldValue, newValue, namespace) {
+                        if (name === 'open' && oldValue === null && newValue === '' && namespace === null) {
+                            const count = Number(this.getAttribute('data-open-reactions') ?? '0');
+                            this.setAttribute('data-open-reactions', String(count + 1));
+                        }
+                    }
+                }
+                customElements.define('watched-modal', WatchedDialog, {extends: 'dialog'});
+                const subject = document.createElement('dialog', {is: 'watched-modal'});
+                if (!(subject instanceof WatchedDialog)) throw new Error('custom Dialog setup');
+                (document.documentElement || document).appendChild(subject);
+                const destination = document.implementation.createHTMLDocument('inactive');
+                subject.addEventListener('beforetoggle', event => {
+                    if (!event.isTrusted || !event.cancelable) return;
+                    destination.body.appendChild(subject);
+                }, {once: true});
+                globalThis.watchedModal = subject;
+                return subject;
+            })()
+        "#)?;
+        projected_node_id(scope, &result)
+    }).unwrap();
+    let native = host.in_document(&permit, |scope| {
+        evaluate(scope, "watchedModal.showModal()").map(drop)
+    });
+    let Err(DocumentScriptError::Script(Error::HostFailure(failure))) = native else {
+        panic!("the genuine native invariant failure is required: {native:?}");
+    };
+    let Some(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(
+        DomError::SourceInvariantFailed { failure, .. },
+    ))) = failure.cause::<DomSourceDriveError>()
+    else {
+        panic!("the failure must identify the original native Source: {failure:?}");
+    };
+    assert_eq!(failure.dialog_operation(), HtmlDialogOperation::ShowModal);
+    assert_eq!(failure.subject(), subject);
+    assert_eq!(
+        failure.action(),
+        HtmlDialogAction::AssertCloseWatcherPresent
+    );
+    assert_eq!(
+        failure.reason(),
+        DomSourceInvariantReason::MissingDialogCloseWatcher
+    );
+    let snapshot = host.snapshot().unwrap();
+    let dialog = snapshot.node(subject).unwrap();
+    assert_ne!(dialog.owner_document(), Some(target.document()));
+    assert!(dialog.is_connected());
+    assert_eq!(dialog.attribute(&"open".into()), Some(&"".into()));
+    assert!(!dialog.as_dialog().unwrap().is_modal());
+    assert_eq!(
+        dialog.attribute(&"data-open-reactions".into()),
+        Some(&"1".into())
+    );
+}
