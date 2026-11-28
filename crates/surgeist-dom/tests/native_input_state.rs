@@ -965,6 +965,56 @@ fn fact(
         .clone()
 }
 #[test]
+fn captured_email_type_mismatch_uses_exact_sanitized_current_value_and_mode() {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+    let mut dom = owner();
+    let (document, _, input) = setup(&mut dom);
+    let mismatch =
+        |capture: &DomHtmlCapture| fact(capture, input, HtmlSemanticQuery::InputEmailTypeMismatch);
+    let known = |answer| HtmlSemanticFact::InputEmailTypeMismatch(HtmlSemanticValue::Known(answer));
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "email");
+    batch.set_attribute(input, "value", "valid@default");
+    batch.set_input_value(input, "a@b,c@d");
+    apply(&mut dom, batch);
+    let single = capture(&dom.snapshot(), document);
+    assert_eq!(mismatch(&single), known(true));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "multiple", "");
+    apply(&mut dom, batch);
+    let multiple = capture(&dom.snapshot(), document);
+    assert_eq!(mismatch(&multiple), known(false));
+
+    for (supplied, stored, expected) in [
+        ("a@b,", "a@b", false),
+        ("a@b, ", "a@b,", true),
+        ("a@b,,c@d", "a@b,,c@d", true),
+        (" ", "", false),
+    ] {
+        let mut batch = DomBatch::new();
+        batch.set_input_value(input, supplied);
+        apply(&mut dom, batch);
+        let snapshot = dom.snapshot();
+        assert_eq!(value(&snapshot, input), stored.into());
+        let current = capture(&snapshot, document);
+        assert_ne!(current.basis(), multiple.basis());
+        assert_eq!(mismatch(&current), known(expected));
+    }
+    assert_eq!(mismatch(&single), known(true));
+    assert_eq!(mismatch(&multiple), known(false));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "text");
+    apply(&mut dom, batch);
+    let text = capture(&dom.snapshot(), document);
+    assert_eq!(
+        mismatch(&text),
+        HtmlSemanticFact::InputEmailTypeMismatch(HtmlSemanticValue::Inapplicable)
+    );
+}
+
+#[test]
 fn semantic_current_values_flags_and_form_owner_survive_actual_slot_supplementation() {
     use surgeist_html_semantics::*;
     let mut dom = owner();

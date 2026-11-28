@@ -42,6 +42,7 @@ mod address;
 mod anchor;
 mod document_title;
 pub use document_title::*;
+mod input_validity;
 mod range;
 mod value_missing;
 pub use advisory_title::*;
@@ -479,6 +480,8 @@ pub enum HtmlSemanticQuery {
     CheckableInputValueMissing,
     /// Required-current-value missingness for Text/Search/Telephone/URL/Email/Password inputs.
     InputTextValueMissing,
+    /// Intrinsic type-mismatch flag of the captured Email Input current value.
+    InputEmailTypeMismatch,
     /// Required-current-value missingness for HTML textarea.
     TextareaValueMissing,
     ControlAutocomplete,
@@ -661,6 +664,9 @@ impl HtmlSemanticQuery {
             }
             Self::InputTextValueMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required"
+            }
+            Self::InputEmailTypeMismatch => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#email-state-(type=email)"
             }
             Self::TextareaValueMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-required"
@@ -1136,6 +1142,7 @@ pub enum HtmlSemanticFact {
     SelectValueMissing(HtmlSemanticValue<bool>),
     CheckableInputValueMissing(HtmlSemanticValue<bool>),
     InputTextValueMissing(HtmlSemanticValue<bool>),
+    InputEmailTypeMismatch(HtmlSemanticValue<bool>),
     TextareaValueMissing(HtmlSemanticValue<bool>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
     SubmitterFormMethod(HtmlSemanticValue<HtmlSubmitterFormMethod>),
@@ -3152,6 +3159,15 @@ impl<'a> HtmlSemanticSession<'a> {
                                     self.input_text_value_missing(&request.subject, element)?
                                 })
                             }
+                            HtmlSemanticQuery::InputEmailTypeMismatch => {
+                                HtmlSemanticFact::InputEmailTypeMismatch(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.input_email_type_mismatch(&request.subject, element)?
+                                })
+                            }
                             HtmlSemanticQuery::TextareaValueMissing => {
                                 HtmlSemanticFact::TextareaValueMissing(if foreign {
                                     HtmlSemanticValue::Unsupported(
@@ -3588,6 +3604,11 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         HtmlSemanticQuery::InputTextValueMissing => {
                             HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::InputEmailTypeMismatch => {
+                            HtmlSemanticFact::InputEmailTypeMismatch(
+                                HtmlSemanticValue::Inapplicable,
+                            )
                         }
                         HtmlSemanticQuery::TextareaValueMissing => {
                             HtmlSemanticFact::TextareaValueMissing(HtmlSemanticValue::Inapplicable)
