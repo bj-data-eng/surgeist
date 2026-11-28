@@ -52,7 +52,7 @@ mod element_tasks;
 #[cfg(test)]
 pub(crate) mod empty_sequence_observation;
 pub(crate) mod event;
-mod focus;
+pub(crate) mod focus;
 mod form;
 mod form_associated_disabled;
 mod fullscreen;

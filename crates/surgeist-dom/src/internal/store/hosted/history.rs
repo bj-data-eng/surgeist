@@ -741,18 +741,39 @@ impl Graph {
     >(
         &self,
         document: DocumentId,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedNavigableId>, E> {
+        self.lookup_active_navigable_for_document(document, false, step)
+    }
+
+    /// Focus-chain composition requires a single unambiguous active association.
+    pub(in crate::internal::store) fn unique_active_navigable_for_document_with<
+        E: From<DomHostedError>,
+    >(
+        &self,
+        document: DocumentId,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<DomHostedNavigableId>, E> {
+        self.lookup_active_navigable_for_document(document, true, step)
+    }
+
+    fn lookup_active_navigable_for_document<E: From<DomHostedError>>(
+        &self,
+        document: DocumentId,
+        require_unique: bool,
         mut step: impl FnMut() -> Result<(), E>,
     ) -> Result<Option<DomHostedNavigableId>, E> {
-        if self.navigables.is_empty() {
+        if self.navigables.is_empty() && !require_unique {
             return Ok(None);
         }
         step()?;
-        let Some(member) = self
-            .documents
-            .get(document)
-            .and_then(|group| group.rows.iter().next())
-            .map(|(_, row)| row)
-        else {
+        let Some(group) = self.documents.get(document) else {
+            return Ok(None);
+        };
+        if require_unique && group.rows.record_count() > 1 {
+            return Err(DomHostedError::StaleBasis.into());
+        }
+        let Some((_, member)) = group.rows.iter().next() else {
             return Ok(None);
         };
         step()?;

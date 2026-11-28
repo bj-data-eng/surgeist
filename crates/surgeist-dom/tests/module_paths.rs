@@ -63,7 +63,8 @@ use surgeist_dom::event::{
 };
 use surgeist_dom::file::{DomFile, DomFileId, DomFileList, DomFileListId};
 use surgeist_dom::focus::{
-    DomDocumentAutofocus, DomFocusObservation, DomFocusPreparation, DomFocusPublication,
+    DomDocumentAutofocus, DomFocusChain, DomFocusChainEntry, DomFocusChainError,
+    DomFocusChainLimits, DomFocusObservation, DomFocusPreparation, DomFocusPublication,
     DomFocusRequest, DomFocusTarget, DomFocusedAreaDesignation, DomSourceAutofocusInsertionRequest,
     DomSourceDialogFocusingRequest, DomSourceFocusDelegateRequest, DomSourceFocusDelegateStep,
 };
