@@ -14,8 +14,7 @@ use surgeist_runtime::{
 };
 
 #[test]
-fn target_configuration_is_rejected_before_association_admission_without_changing_existing_capture()
-{
+fn unsupported_domains_are_rejected_before_association_admission_without_changing_the_capture() {
     let mut dom = Dom::new(
         DomLimits::new(
             16,
@@ -72,21 +71,23 @@ fn target_configuration_is_rejected_before_association_admission_without_changin
         .to_vec();
 
     // Even zero association/work admission and a missing registry association
-    // cannot turn an unsupported producer into a target-none publication.
-    for associations in [vec![], vec![(reference, node)]] {
+    // cannot turn an unsupported producer into an empty publication.
+    for (domains, associations) in [
+        (DomHostDomains::DocumentTarget, vec![]),
+        (DomHostDomains::DocumentTarget, vec![(reference, node)]),
+        (DomHostDomains::SpellcheckDefaults, vec![]),
+        (DomHostDomains::SpellcheckDefaults, vec![(reference, node)]),
+    ] {
         let error = runtime
             .bind_dom_host(
                 surface,
                 document,
                 associations,
-                DomHostDomains::DocumentTarget,
+                domains,
                 SurfaceDomBindingLimits::new(0, 0),
             )
             .unwrap_err();
-        assert_eq!(
-            error,
-            RuntimeDomHostError::UnsupportedDomains(DomHostDomains::DocumentTarget)
-        );
+        assert_eq!(error, RuntimeDomHostError::UnsupportedDomains(domains));
         assert_eq!(host.latest(), Some(selected.publication().capture()));
         assert_eq!(
             host.changes_since(Some(initial.publication().capture().stamp()))

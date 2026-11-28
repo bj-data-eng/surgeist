@@ -93,6 +93,8 @@ pub struct DomHtmlCaptureLimits {
     base: Option<BaseCapturePolicy>,
 }
 impl DomHtmlCaptureLimits {
+    /// Bounds capture subjects and work. The subject ceiling also limits the
+    /// combined backing for design-mode facts and external spellcheck defaults.
     pub fn new(subjects: usize, work: usize) -> Self {
         Self {
             subjects,
@@ -360,7 +362,8 @@ impl DomHtmlCapture {
     }
     /// Executes the real HTML semantic session over this exact composition.
     /// Reports retain the producer's Missing/Inapplicable/Unsupported outcomes
-    /// and conservative dependency contract; no default host facts are supplied.
+    /// and conservative dependency contract. Supplied host policy remains tied
+    /// to the exact captured external revision.
     pub fn query(
         &self,
         requests: &[HtmlSemanticRequest],
@@ -1091,7 +1094,7 @@ impl DomSnapshot {
             &mut control,
             capture_limits.utf16_units(),
         )?;
-        let input = inheritance::with_facts(input, self, &capture, &entries, &mut control)?;
+        let input = inheritance::with_facts(input, self, &capture, &entries, host, &mut control)?;
         let base_policy = control.limits.base;
         let (input, base_work) = base::with_facts(
             input,

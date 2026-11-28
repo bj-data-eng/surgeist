@@ -13,7 +13,8 @@
 use surgeist_dom::capture::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
-    DomHostRecomputeReason, DomHostSourceId, DomHostStamp, DomHtmlCapture, DomHtmlCaptureError,
+    DomHostRecomputeReason, DomHostSourceId, DomHostSpellcheckDefaults, DomHostSpellcheckError,
+    DomHostSpellcheckLimits, DomHostStamp, DomHtmlCapture, DomHtmlCaptureError,
     DomHtmlCaptureLimits, DomHtmlCaptureResource, DomScriptingCapture, DomSlotSemanticLimits,
     HostStateRevision, Observed,
 };

@@ -1,8 +1,10 @@
 //! Current canonical Document state, joined by the shared inheritance owner.
 use super::*;
+use crate::internal::host::DomHostObservations;
 use surgeist_html_semantics::{
     HtmlDesignMode, HtmlDocumentDesignModeFact, HtmlGlobalInheritanceFacts,
     HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
+    HtmlSpellcheckDefaultFact,
 };
 
 pub(super) fn with_facts(
@@ -10,13 +12,35 @@ pub(super) fn with_facts(
     source: &DomSnapshot,
     capture: &HtmlCapture,
     entries: &[Entry],
+    host: Option<&DomHostCapture>,
     control: &mut Control<'_>,
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
     let mut documents = Vec::new();
+    let mut defaults = Vec::new();
+    let policy = host.and_then(|host| match host.observations() {
+        DomHostObservations::SpellcheckDefaults(policy) => Some(policy),
+        _ => None,
+    });
+    // The exact Document's capture contains every Element named by its hosted
+    // policy, including detached nodes.
+    if let Some(policy) = policy {
+        control.reserve_extent(&mut defaults, policy.len(), control.limits.subjects)?;
+    }
+    let document_capacity = control
+        .limits
+        .subjects
+        .checked_sub(defaults.capacity())
+        .ok_or(DomHtmlCaptureError::ResourceLimit {
+            resource: DomHtmlCaptureResource::Subjects,
+            limit: control.limits.subjects,
+        })?;
     for entry in entries {
         control.charge(1)?;
-        if let Some(document) = source.node(entry.node)?.as_document() {
-            control.reserve(&mut documents, 1)?;
+        if let Some(document) = source
+            .node_with(entry.node, || control.charge(1))?
+            .as_document()
+        {
+            control.reserve_extent(&mut documents, 1, document_capacity)?;
             documents.push(HtmlDocumentDesignModeFact::new(
                 entry.subject.clone(),
                 if document.metadata().design_mode_enabled() {
@@ -24,6 +48,16 @@ pub(super) fn with_facts(
                 } else {
                     HtmlDesignMode::Disabled
                 },
+            ));
+        }
+        if let Some(defaults_policy) = policy
+            && let Some(default) =
+                defaults_policy.default_for_with(entry.node, || control.charge(1))?
+        {
+            control.reserve_extent(&mut defaults, 1, defaults_policy.len())?;
+            defaults.push(HtmlSpellcheckDefaultFact::new(
+                entry.subject.clone(),
+                Some(default),
             ));
         }
     }
@@ -34,13 +68,13 @@ pub(super) fn with_facts(
         source.revision().get(),
     );
     // Same explicit finite work scalar, independently applied to this producer
-    // formation. No external spellcheck default is inferred from native state.
+    // formation. Only the supplied source contributes spellcheck defaults.
     let facts = HtmlGlobalInheritanceFacts::new(
         capture,
         capture.host_facts_revision().clone(),
         revision.clone(),
         documents,
-        Vec::new(),
+        defaults,
         HtmlGlobalInheritanceLimits::new(control.limits.subjects, control.limits.work),
     )
     .map_err(DomHtmlCaptureError::GlobalInheritance)?;
@@ -112,6 +146,7 @@ mod tests {
                 &source,
                 &capture,
                 &entries,
+                None,
                 &mut Control {
                     limits: DomHtmlCaptureLimits::new(subjects, work),
                     work: 0,

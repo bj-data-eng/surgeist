@@ -435,9 +435,16 @@ impl<'a> DomDocument<'a> {
     /// Validates membership at this captured revision. A Document belongs to
     /// itself, although its source-defined ownerDocument getter returns None.
     pub fn node(self, id: NodeId) -> Result<DomNode<'a>, DomError> {
-        let node = self.snapshot.node(id)?;
+        self.node_with(id, || Ok(()))
+    }
+    pub(crate) fn node_with<E: From<DomError>>(
+        self,
+        id: NodeId,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<DomNode<'a>, E> {
+        let node = self.snapshot.node_with(id, step)?;
         if node.node.document() != self.id {
-            return Err(DomError::WrongDocument);
+            return Err(DomError::WrongDocument.into());
         }
         Ok(node)
     }

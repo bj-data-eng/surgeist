@@ -45,6 +45,9 @@ impl DomHtmlCapture {
             cancellation: cancel,
         };
         control.charge(1)?;
+        // Slot supplementation rebuilds the context. Release its old backing
+        // before admitting any replacement facts.
+        drop(self.context);
         let subjects = super::nodes::Subjects::new(&self.entries, &mut control)?;
         let mut assignments = Vec::new();
         let mut inert_nodes = Vec::new();
@@ -162,6 +165,7 @@ impl DomHtmlCapture {
             &self.source,
             &self.capture,
             &self.entries,
+            self.host.as_ref(),
             &mut control,
         )?;
         let policy = limits.adapter.base.or(self.base_policy);

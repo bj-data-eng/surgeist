@@ -871,6 +871,10 @@ fn host_errors_state_the_refused_publication_or_stamp() {
             DomHostError::HostRevisionExhausted,
             "the external revision cannot advance for the changed observations",
         ),
+        (
+            DomHostError::Spellcheck(surgeist_dom::capture::DomHostSpellcheckError::Cancelled),
+            "spellcheck policy publication was cancelled",
+        ),
     ];
     check_table(
         rows,
@@ -886,8 +890,14 @@ fn host_errors_state_the_refused_publication_or_stamp() {
             DomHostError::Unpublished => 8,
             DomHostError::Subject { .. } => 9,
             DomHostError::HostRevisionExhausted => 10,
+            DomHostError::Spellcheck(_) => 11,
         },
-        |error| matches!(error, DomHostError::Subject { .. }),
+        |error| {
+            matches!(
+                error,
+                DomHostError::Subject { .. } | DomHostError::Spellcheck(_)
+            )
+        },
     );
     let inner = some_dom_error();
     assert_chains(
@@ -962,7 +972,9 @@ fn publisher_refusals_return_messages_naming_the_cause() {
     );
 
     let focus = DomHostObservations::Focus(Observed::Unsupported);
-    publisher.publish(current, current.stamp(), focus).unwrap();
+    publisher
+        .publish(current, current.stamp(), focus.clone())
+        .unwrap();
     let mut batch = DomBatch::new();
     batch.set_attribute(root, "key", "value");
     dom.apply(batch, &cancel()).unwrap();

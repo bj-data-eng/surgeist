@@ -6,6 +6,7 @@ pub mod surgeist_dom::capture
 pub enum surgeist_dom::capture::DomHostChange
 pub surgeist_dom::capture::DomHostChange::Availability
 pub surgeist_dom::capture::DomHostChange::Availability::domain: surgeist_dom::capture::DomHostDomain
+pub surgeist_dom::capture::DomHostChange::SpellcheckDefaults
 pub surgeist_dom::capture::DomHostChange::Target
 pub surgeist_dom::capture::DomHostChange::Target::current: core::option::Option<surgeist_dom::identity::NodeId>
 pub surgeist_dom::capture::DomHostChange::Target::domain: surgeist_dom::capture::DomHostDomain
@@ -26,6 +27,7 @@ pub surgeist_dom::capture::DomHostDomains::DocumentTarget
 pub surgeist_dom::capture::DomHostDomains::Focus
 pub surgeist_dom::capture::DomHostDomains::FocusAndHover
 pub surgeist_dom::capture::DomHostDomains::Hover
+pub surgeist_dom::capture::DomHostDomains::SpellcheckDefaults
 pub enum surgeist_dom::capture::DomHostError
 pub surgeist_dom::capture::DomHostError::DomRevisionMismatch
 pub surgeist_dom::capture::DomHostError::DomRevisionMismatch::actual: surgeist_dom::identity::DomRevision
@@ -38,6 +40,7 @@ pub surgeist_dom::capture::DomHostError::ForeignSource
 pub surgeist_dom::capture::DomHostError::FutureDomRevision
 pub surgeist_dom::capture::DomHostError::FutureHostRevision
 pub surgeist_dom::capture::DomHostError::HostRevisionExhausted
+pub surgeist_dom::capture::DomHostError::Spellcheck(surgeist_dom::capture::DomHostSpellcheckError)
 pub surgeist_dom::capture::DomHostError::StaleDomRevision
 pub surgeist_dom::capture::DomHostError::StaleDomRevision::actual: surgeist_dom::identity::DomRevision
 pub surgeist_dom::capture::DomHostError::StaleDomRevision::current: surgeist_dom::identity::DomRevision
@@ -46,6 +49,8 @@ pub surgeist_dom::capture::DomHostError::Subject::error: surgeist_dom::DomError
 pub surgeist_dom::capture::DomHostError::Subject::node: surgeist_dom::identity::NodeId
 pub surgeist_dom::capture::DomHostError::Unpublished
 pub surgeist_dom::capture::DomHostError::WrongDocument
+impl core::convert::From<surgeist_dom::capture::DomHostSpellcheckError> for surgeist_dom::capture::DomHostError
+pub fn surgeist_dom::capture::DomHostError::from(error: surgeist_dom::capture::DomHostSpellcheckError) -> Self
 impl core::error::Error for surgeist_dom::capture::DomHostError
 pub fn surgeist_dom::capture::DomHostError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::capture::DomHostError
@@ -57,12 +62,28 @@ pub surgeist_dom::capture::DomHostObservations::FocusAndHover
 pub surgeist_dom::capture::DomHostObservations::FocusAndHover::focus: surgeist_dom::capture::Observed<core::option::Option<surgeist_dom::identity::NodeId>>
 pub surgeist_dom::capture::DomHostObservations::FocusAndHover::hover: surgeist_dom::capture::Observed<core::option::Option<surgeist_dom::identity::NodeId>>
 pub surgeist_dom::capture::DomHostObservations::Hover(surgeist_dom::capture::Observed<core::option::Option<surgeist_dom::identity::NodeId>>)
+pub surgeist_dom::capture::DomHostObservations::SpellcheckDefaults(surgeist_dom::capture::DomHostSpellcheckDefaults)
 impl surgeist_dom::capture::DomHostObservations
 pub fn surgeist_dom::capture::DomHostObservations::domains(&self) -> surgeist_dom::capture::DomHostDomains
 pub enum surgeist_dom::capture::DomHostRecomputeReason
 pub surgeist_dom::capture::DomHostRecomputeReason::DomBasisChanged
 pub surgeist_dom::capture::DomHostRecomputeReason::HistoryUnavailable
 pub surgeist_dom::capture::DomHostRecomputeReason::InitialCapture
+pub enum surgeist_dom::capture::DomHostSpellcheckError
+pub surgeist_dom::capture::DomHostSpellcheckError::AllocationFailed
+pub surgeist_dom::capture::DomHostSpellcheckError::Cancelled
+pub surgeist_dom::capture::DomHostSpellcheckError::Capacity
+pub surgeist_dom::capture::DomHostSpellcheckError::Capacity::limit: usize
+pub surgeist_dom::capture::DomHostSpellcheckError::DuplicateSubject(surgeist_dom::identity::NodeId)
+pub surgeist_dom::capture::DomHostSpellcheckError::InheritWithoutElementParent(surgeist_dom::identity::NodeId)
+pub surgeist_dom::capture::DomHostSpellcheckError::RequiresBoundedPublication
+pub surgeist_dom::capture::DomHostSpellcheckError::Work
+pub surgeist_dom::capture::DomHostSpellcheckError::Work::limit: usize
+impl core::convert::From<surgeist_dom::capture::DomHostSpellcheckError> for surgeist_dom::capture::DomHostError
+pub fn surgeist_dom::capture::DomHostError::from(error: surgeist_dom::capture::DomHostSpellcheckError) -> Self
+impl core::error::Error for surgeist_dom::capture::DomHostSpellcheckError
+impl core::fmt::Display for surgeist_dom::capture::DomHostSpellcheckError
+pub fn surgeist_dom::capture::DomHostSpellcheckError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::capture::DomHtmlCaptureError
 pub surgeist_dom::capture::DomHtmlCaptureError::AllocationFailed
 pub surgeist_dom::capture::DomHtmlCaptureError::BaseFacts(surgeist_html_semantics::base::HtmlBaseFactsError)
@@ -121,6 +142,8 @@ pub fn surgeist_dom::capture::DomHostPublisher::domains(&self) -> surgeist_dom::
 pub fn surgeist_dom::capture::DomHostPublisher::latest(&self) -> core::option::Option<&surgeist_dom::capture::DomHostCapture>
 pub fn surgeist_dom::capture::DomHostPublisher::new(domains: surgeist_dom::capture::DomHostDomains) -> Self
 pub fn surgeist_dom::capture::DomHostPublisher::publish(&mut self, document: surgeist_dom::tree::DomDocument<'_>, observed_basis: surgeist_dom::identity::DomDocumentStamp, observations: surgeist_dom::capture::DomHostObservations) -> core::result::Result<surgeist_dom::capture::DomHostPublication, surgeist_dom::capture::DomHostError>
+impl surgeist_dom::capture::DomHostPublisher
+pub fn surgeist_dom::capture::DomHostPublisher::publish_spellcheck_defaults(&mut self, document: surgeist_dom::tree::DomDocument<'_>, observed_basis: surgeist_dom::identity::DomDocumentStamp, defaults: &[(surgeist_dom::identity::NodeId, surgeist_html_semantics::semantics::inheritance::HtmlSpellcheckDefaultBehavior)], limits: surgeist_dom::capture::DomHostSpellcheckLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::capture::DomHostPublication, surgeist_dom::capture::DomHostError>
 pub struct surgeist_dom::capture::DomHostSourceId(_)
 impl core::cmp::Eq for surgeist_dom::capture::DomHostSourceId
 impl core::cmp::PartialEq for surgeist_dom::capture::DomHostSourceId
@@ -129,6 +152,12 @@ impl core::fmt::Debug for surgeist_dom::capture::DomHostSourceId
 pub fn surgeist_dom::capture::DomHostSourceId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for surgeist_dom::capture::DomHostSourceId
 pub fn surgeist_dom::capture::DomHostSourceId::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_dom::capture::DomHostSpellcheckDefaults(_)
+impl surgeist_dom::capture::DomHostSpellcheckDefaults
+pub fn surgeist_dom::capture::DomHostSpellcheckDefaults::default_for(&self, element: surgeist_dom::identity::NodeId) -> core::option::Option<surgeist_html_semantics::semantics::inheritance::HtmlSpellcheckDefaultBehavior>
+pub struct surgeist_dom::capture::DomHostSpellcheckLimits
+impl surgeist_dom::capture::DomHostSpellcheckLimits
+pub const fn surgeist_dom::capture::DomHostSpellcheckLimits::new(capacity: usize, work: usize) -> Self
 pub struct surgeist_dom::capture::DomHostStamp
 impl surgeist_dom::capture::DomHostStamp
 pub fn surgeist_dom::capture::DomHostStamp::document(&self) -> surgeist_dom::identity::DomDocumentStamp

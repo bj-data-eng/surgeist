@@ -59,6 +59,20 @@ limits. Failed or cancelled composition returns no partial successful capture
 and changes neither DOM nor host revisions. Old captures retain their original
 membership after adoption, destruction and import elsewhere.
 
+## Spellcheck defaults and design mode
+
+An external policy provider publishes per-Element defaults through
+`DomHostPublisher::publish_spellcheck_defaults`. The policy is scoped to one
+Document stamp. Omitted Elements retain unavailable defaults. A changed policy
+advances the host revision and invalidates the spellcheck domain. Canonical
+designMode changes advance the DOM revision. Equal policy recaptures preserve
+the host revision on a new canonical basis.
+
+Native captures and Slot supplementation join the supplied policy with
+canonical designMode and the actual ordinary parent relationships. The
+HTML semantic producer interprets authored attributes and inherited defaults.
+Held captures retain their original policy, canonical values, and stamps.
+
 ## Slot supplementation and blocking facts
 
 `DomHtmlCapture::with_slot_semantics` reuses actual stored lists for HTML

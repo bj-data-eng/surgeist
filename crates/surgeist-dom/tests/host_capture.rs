@@ -72,7 +72,7 @@ fn fixed_variants_preserve_availability_and_reject_different_configuration_atomi
             Err(DomHostError::Unpublished)
         );
         let first = publisher
-            .publish(document, document.stamp(), observations)
+            .publish(document, document.stamp(), observations.clone())
             .unwrap();
         assert_eq!(first.capture().observations(), &observations);
         assert_eq!(first.capture().stamp().host_revision().get(), 0);
@@ -83,11 +83,12 @@ fn fixed_variants_preserve_availability_and_reject_different_configuration_atomi
         } else {
             DomHostObservations::Focus(Observed::Supported(None))
         };
+        let actual = wrong.domains();
         assert_eq!(
             publisher.publish(document, document.stamp(), wrong),
             Err(DomHostError::DomainMismatch {
                 expected: domains,
-                actual: wrong.domains()
+                actual
             })
         );
         assert_eq!(publisher.latest(), Some(first.capture()));
@@ -202,7 +203,7 @@ fn canonical_revision_changes_require_recomputation_without_advancing_equal_host
     let mut publisher = DomHostPublisher::new(DomHostDomains::Focus);
     let facts = DomHostObservations::Focus(Observed::Supported(Some(a)));
     let first = publisher
-        .publish(old_document, old_document.stamp(), facts)
+        .publish(old_document, old_document.stamp(), facts.clone())
         .unwrap();
     let mut batch = DomBatch::new();
     batch.set_attribute(a, "key", "value");
@@ -210,7 +211,7 @@ fn canonical_revision_changes_require_recomputation_without_advancing_equal_host
     let new = dom.snapshot();
     let document = new.document(id).unwrap();
     assert_eq!(
-        publisher.publish(document, old_document.stamp(), facts),
+        publisher.publish(document, old_document.stamp(), facts.clone()),
         Err(DomHostError::DomRevisionMismatch {
             expected: old.revision(),
             actual: new.revision()
@@ -218,7 +219,7 @@ fn canonical_revision_changes_require_recomputation_without_advancing_equal_host
     );
     assert_eq!(publisher.latest(), Some(first.capture()));
     let second = publisher
-        .publish(document, document.stamp(), facts)
+        .publish(document, document.stamp(), facts.clone())
         .unwrap();
     assert_eq!(second.capture().stamp().host_revision().get(), 0);
     assert_ne!(first.capture().stamp(), second.capture().stamp());

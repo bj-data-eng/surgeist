@@ -81,6 +81,16 @@ use surgeist_dom::{
     capture::DomHtmlCapture,
     identity::{DocumentId, NodeId},
 };
+use surgeist_dom::{
+    capture::{
+        DomHostChange, DomHostChangeCoverage, DomHostDomains, DomHostError, DomHostPublisher,
+        DomHostSpellcheckError, DomHostSpellcheckLimits,
+    },
+    edit::DomChange,
+};
+use surgeist_html_semantics::HtmlSpellcheckDefaultBehavior::{
+    FalseByDefault, InheritByDefault, TrueByDefault,
+};
 use surgeist_html_semantics::{HtmlSemanticMissing, HtmlTranslationMode};
 
 fn owner() -> Dom {
@@ -99,6 +109,296 @@ fn owner() -> Dom {
         .unwrap(),
     )
     .unwrap()
+}
+
+fn spellcheck_capture(
+    snapshot: &DomSnapshot,
+    document: DocumentId,
+    publisher: &DomHostPublisher,
+) -> DomHtmlCapture {
+    snapshot
+        .html_capture(
+            document,
+            publisher.latest(),
+            HtmlCaptureLimits::new(32, 128, 32, 8192, 32, 0, 0, 16_777_216),
+            DomHtmlCaptureLimits::new(32, 10_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap()
+}
+
+#[test]
+fn spellcheck_policy_and_canonical_design_mode_advance_only_their_own_revisions() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    batch.set_design_mode(&document, "on");
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    let inherited = batch.create_element_ns(&document, Namespace::html(), "span");
+    let authored = batch.create_element_ns(&document, Namespace::html(), "span");
+    let omitted = batch.create_element_ns(&document, Namespace::html(), "p");
+    batch.set_attribute(&authored, "spellcheck", "");
+    batch.insert_before(&root, &document, None);
+    for child in [&inherited, &authored, &omitted] {
+        batch.insert_before(child, &root, None);
+    }
+    let created = dom.apply(batch, &cancel).unwrap();
+    let document = created.document(&document).unwrap();
+    let [root, inherited, authored, omitted] =
+        [root, inherited, authored, omitted].map(|node| created.created(&node).unwrap().unwrap());
+    let before = dom.snapshot();
+    let view = before.document(document).unwrap();
+    let mut publisher = DomHostPublisher::new(DomHostDomains::SpellcheckDefaults);
+    let limits = DomHostSpellcheckLimits::new(32, 256);
+    let first = publisher
+        .publish_spellcheck_defaults(
+            view,
+            view.stamp(),
+            &[
+                (root, TrueByDefault),
+                (inherited, InheritByDefault),
+                (authored, FalseByDefault),
+            ],
+            limits,
+            &cancel,
+        )
+        .unwrap();
+    let old = spellcheck_capture(&before, document, &publisher);
+    let changed = [
+        (authored, FalseByDefault),
+        (root, FalseByDefault),
+        (inherited, InheritByDefault),
+    ];
+    let second = publisher
+        .publish_spellcheck_defaults(view, view.stamp(), &changed, limits, &cancel)
+        .unwrap();
+    assert_eq!(before.stamp(), dom.snapshot().stamp());
+    assert_eq!(
+        first.capture().stamp().document(),
+        second.capture().stamp().document()
+    );
+    assert_eq!(
+        first.capture().stamp().host_revision().get() + 1,
+        second.capture().stamp().host_revision().get()
+    );
+    let DomHostChangeCoverage::Complete(delta) = second.changes() else {
+        panic!("the single unchanged canonical basis permits complete policy invalidation");
+    };
+    assert_eq!(
+        delta.changes().copied().collect::<Vec<_>>(),
+        [DomHostChange::SpellcheckDefaults]
+    );
+    let current = spellcheck_capture(&before, document, &publisher);
+    let rebuilt = with_slots(spellcheck_capture(&before, document, &publisher));
+    assert_eq!(
+        rebuilt.host().unwrap().stamp(),
+        current.host().unwrap().stamp()
+    );
+    for (capture, expected) in [(&old, true), (&current, false)] {
+        assert_eq!(
+            fact(capture, inherited, HtmlSemanticQuery::Spellcheck),
+            HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(expected))
+        );
+        assert_eq!(
+            fact(capture, root, HtmlSemanticQuery::EditingHost),
+            HtmlSemanticFact::EditingHost(HtmlSemanticValue::Known(true))
+        );
+        assert_eq!(
+            fact(capture, authored, HtmlSemanticQuery::Spellcheck),
+            HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(true))
+        );
+        assert_eq!(
+            fact(capture, omitted, HtmlSemanticQuery::Spellcheck),
+            HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Missing(
+                HtmlSemanticMissing::SpellcheckDefault(capture.subject(omitted).unwrap())
+            ))
+        );
+    }
+    assert_eq!(
+        fact(&rebuilt, inherited, HtmlSemanticQuery::Spellcheck),
+        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(false))
+    );
+    let reordered = [changed[2], changed[0], changed[1]];
+    let equal = publisher
+        .publish_spellcheck_defaults(view, view.stamp(), &reordered, limits, &cancel)
+        .unwrap();
+    assert_eq!(equal.capture(), second.capture());
+    let mut batch = DomBatch::new();
+    batch.set_design_mode(document, "off");
+    assert_eq!(
+        dom.apply(batch, &cancel).unwrap().changes().changes(),
+        [DomChange::DocumentDesignMode(document)]
+    );
+    let after = dom.snapshot();
+    let after_view = after.document(document).unwrap();
+    assert!(matches!(
+        publisher.publish_spellcheck_defaults(after_view, view.stamp(), &changed, limits, &cancel),
+        Err(DomHostError::DomRevisionMismatch { .. })
+    ));
+    let rebased = publisher
+        .publish_spellcheck_defaults(after_view, after_view.stamp(), &changed, limits, &cancel)
+        .unwrap();
+    assert_eq!(
+        rebased.capture().stamp().host_revision(),
+        second.capture().stamp().host_revision()
+    );
+    assert_eq!(rebased.capture().stamp().document(), after_view.stamp());
+    let after = spellcheck_capture(&after, document, &publisher);
+    assert_eq!(
+        fact(&after, root, HtmlSemanticQuery::EditingHost),
+        HtmlSemanticFact::EditingHost(HtmlSemanticValue::Known(false))
+    );
+    assert_eq!(
+        fact(&after, inherited, HtmlSemanticQuery::Spellcheck),
+        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(false))
+    );
+    assert_eq!(
+        fact(&old, inherited, HtmlSemanticQuery::Spellcheck),
+        HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(true))
+    );
+}
+
+#[test]
+fn invalid_or_unadmitted_spellcheck_policy_keeps_the_previous_capture() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let root = batch.create_element_ns(&document, Namespace::html(), "div");
+    batch.insert_before(&root, &document, None);
+    let created = dom.apply(batch, &cancel).unwrap();
+    let snapshot = dom.snapshot();
+    let document = snapshot
+        .document(created.document(&document).unwrap())
+        .unwrap();
+    let root = created.created(&root).unwrap().unwrap();
+    let mut publisher = DomHostPublisher::new(DomHostDomains::SpellcheckDefaults);
+    let limits = DomHostSpellcheckLimits::new(8, 128);
+    let original = publisher
+        .publish_spellcheck_defaults(
+            document,
+            document.stamp(),
+            &[(root, TrueByDefault)],
+            DomHostSpellcheckLimits::new(1, 128),
+            &cancel,
+        )
+        .unwrap();
+    for (entries, limits, cancel, expected) in [
+        (
+            vec![(root, InheritByDefault)],
+            limits,
+            false,
+            DomHostSpellcheckError::InheritWithoutElementParent(root),
+        ),
+        (
+            vec![(root, FalseByDefault), (root, TrueByDefault)],
+            limits,
+            false,
+            DomHostSpellcheckError::DuplicateSubject(root),
+        ),
+        (
+            vec![(root, FalseByDefault)],
+            DomHostSpellcheckLimits::new(8, 2),
+            false,
+            DomHostSpellcheckError::Work { limit: 2 },
+        ),
+        (
+            vec![(root, FalseByDefault)],
+            DomHostSpellcheckLimits::new(0, 16),
+            false,
+            DomHostSpellcheckError::Capacity { limit: 0 },
+        ),
+        (
+            vec![(root, FalseByDefault)],
+            DomHostSpellcheckLimits::new(1, 128),
+            false,
+            DomHostSpellcheckError::Capacity { limit: 1 },
+        ),
+        (
+            vec![(root, FalseByDefault)],
+            limits,
+            true,
+            DomHostSpellcheckError::Cancelled,
+        ),
+    ] {
+        assert_eq!(
+            publisher.publish_spellcheck_defaults(
+                document,
+                document.stamp(),
+                &entries,
+                limits,
+                &AtomicBool::new(cancel)
+            ),
+            Err(DomHostError::Spellcheck(expected))
+        );
+        assert_eq!(publisher.latest(), Some(original.capture()));
+    }
+    let mut foreign_dom = owner();
+    let mut foreign = DomBatch::new();
+    let foreign_document = foreign.create_document();
+    let foreign_element = foreign.create_element_ns(&foreign_document, Namespace::html(), "div");
+    let foreign = foreign_dom
+        .apply(foreign, &cancel)
+        .unwrap()
+        .created(&foreign_element)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        publisher.publish_spellcheck_defaults(
+            document,
+            document.stamp(),
+            &[(foreign, FalseByDefault)],
+            limits,
+            &cancel
+        ),
+        Err(DomHostError::Subject {
+            node: foreign,
+            error: DomError::ForeignOwner
+        })
+    );
+    assert_eq!(publisher.latest(), Some(original.capture()));
+}
+
+#[test]
+fn design_mode_and_policy_rows_fit_the_shared_exact_subject_limit() {
+    let cancel = AtomicBool::new(false);
+    let mut dom = owner();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let elements = ["div", "p", "span"]
+        .map(|name| batch.create_element_ns(&document, Namespace::html(), name));
+    let created = dom.apply(batch, &cancel).unwrap();
+    let document = created.document(&document).unwrap();
+    let elements = elements.map(|element| created.created(&element).unwrap().unwrap());
+    let snapshot = dom.snapshot();
+    let view = snapshot.document(document).unwrap();
+    let mut publisher = DomHostPublisher::new(DomHostDomains::SpellcheckDefaults);
+    let defaults = elements.map(|element| (element, TrueByDefault));
+    publisher
+        .publish_spellcheck_defaults(
+            view,
+            view.stamp(),
+            &defaults,
+            DomHostSpellcheckLimits::new(3, 128),
+            &cancel,
+        )
+        .unwrap();
+    let capture = snapshot
+        .html_capture(
+            document,
+            publisher.latest(),
+            HtmlCaptureLimits::new(8, 64, 32, 8192, 8, 0, 0, 16_777_216),
+            DomHtmlCaptureLimits::new(4, 10_000),
+            &cancel,
+        )
+        .unwrap();
+    for element in elements {
+        assert_eq!(
+            fact(&capture, element, HtmlSemanticQuery::Spellcheck),
+            HtmlSemanticFact::Spellcheck(HtmlSemanticValue::Known(true))
+        );
+    }
 }
 
 #[test]

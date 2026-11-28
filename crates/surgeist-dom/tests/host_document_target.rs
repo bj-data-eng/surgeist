@@ -230,11 +230,12 @@ fn mismatching_domains_do_not_publish_an_absent_target_or_replace_existing_histo
             hover: Observed::Supported(None),
         },
     ] {
+        let actual = observations.domains();
         assert_eq!(
             publisher.publish(document, document.stamp(), observations),
             Err(DomHostError::DomainMismatch {
                 expected: DomHostDomains::DocumentTarget,
-                actual: observations.domains(),
+                actual,
             })
         );
         assert_eq!(publisher.latest(), Some(first.capture()));
