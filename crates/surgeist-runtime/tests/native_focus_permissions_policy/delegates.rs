@@ -202,14 +202,15 @@ fn ordinary_descendant_queries_keep_the_exact_focus_or_autofocus_leaf_across_res
             DomSourceEdit::set_native_attribute(subject, "inert", ""),
         );
         let mut batch = DomBatch::new();
+        let text = batch.create_text(top.document(), "ordinary text before unresolved Element");
+        let comment =
+            batch.create_comment(top.document(), "ordinary comment before unresolved Element");
+        batch.insert_before(&text, subject, None);
+        batch.insert_before(&comment, subject, None);
         let child = batch.create_element_ns(top.document(), Namespace::html(), "span");
-        let child = session
-            .dom()
-            .apply(batch, &cancel())
-            .unwrap()
-            .created(&child)
-            .unwrap()
-            .unwrap();
+        let commit = session.dom().apply(batch, &cancel()).unwrap();
+        let [text, comment, child] =
+            [text, comment, child].map(|node| commit.created(&node).unwrap().unwrap());
         edit(
             &mut session,
             DomSourceEdit::insert_before(child, subject, None),
@@ -221,7 +222,10 @@ fn ordinary_descendant_queries_keep_the_exact_focus_or_autofocus_leaf_across_res
             );
         }
         let ready = session.snapshot();
-        assert_eq!(ready.node(subject).unwrap().children(), [child]);
+        assert_eq!(
+            ready.node(subject).unwrap().children(),
+            [text, comment, child]
+        );
         assert_eq!(ready.node(child).unwrap().parent(), Some(subject));
         assert_eq!(ready.node(subject).unwrap().hosted_shadow_root(), None);
         assert_eq!(
