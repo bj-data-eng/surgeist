@@ -118,16 +118,16 @@ impl TreeRootBank {
         }
         Ok(())
     }
-    /// The bytes one record's cell adds to a creation's copy, when the bank holds cells.
-    pub(super) fn cell_bytes(&self) -> usize {
+    /// The cells a creation of `count` records writes: one for each record while the parse builds,
+    /// and none once the bank is published.
+    pub(super) fn cells_for(&self, count: usize) -> usize {
         match self {
-            Self::Building { .. } => mem::size_of::<TreeRootCell>(),
+            Self::Building { .. } => count,
             Self::Published => 0,
         }
     }
     /// Frees the bank and answers every later root by the climb alone. A bank already published
-    /// has nothing to free. A refusal of the release leaves the bank published: the vector is
-    /// returned to the allocator by the ticket's owner.
+    /// has nothing to free. A refused release has latched its stop, and the bank stays published.
     pub(super) fn publish(&mut self, control: &mut ParseControl) -> Result<(), SessionError> {
         match std::mem::replace(self, Self::Published) {
             Self::Building { cells, allocation } => release_vector(control, cells, allocation),

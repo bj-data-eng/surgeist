@@ -186,15 +186,17 @@ impl SessionStorage {
         // bank beside the joins: it grows with them, and its copy and write are charged with
         // theirs.
         self.payloads.tree_roots.admit_growth(control, count)?;
-        let cell_bytes = self.payloads.tree_roots.cell_bytes();
+        let cells = self.payloads.tree_roots.cells_for(count);
         control.charge(
             HtmlParseWorkCategory::CopyByte,
-            count.saturating_mul(mem::size_of::<NodeJoins>().saturating_add(cell_bytes)) as u64,
+            (count.saturating_mul(mem::size_of::<NodeJoins>()))
+                .saturating_add(cells.saturating_mul(mem::size_of::<tree_root::TreeRootCell>()))
+                as u64,
         )?;
         self.admit_context_cells(control, count)?;
         control.charge(
             HtmlParseWorkCategory::RecordWrite,
-            entries.saturating_add(if cell_bytes == 0 { 0 } else { count as u64 }),
+            entries.saturating_add(cells as u64),
         )?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
