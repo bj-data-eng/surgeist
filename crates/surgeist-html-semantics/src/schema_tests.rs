@@ -78,6 +78,8 @@ fn the_capture_scope_caps_exactly_the_capture_resources() {
 enum Mapped {
     Work(HtmlWork),
     Resource(HtmlResource),
+    /// One field caps more than one resource through a derived bound.
+    Resources(&'static [HtmlResource]),
     /// A cap that is not a ledger cap.
     Local,
 }
@@ -104,6 +106,7 @@ fn pin(scope: HtmlCapScope, limits: impl std::fmt::Debug, map: fn(&str) -> Mappe
         match map(&name) {
             Mapped::Work(dimension) => work.push(dimension),
             Mapped::Resource(dimension) => resources.push(dimension),
+            Mapped::Resources(dimensions) => resources.extend_from_slice(dimensions),
             Mapped::Local => {}
         }
     }
@@ -175,7 +178,13 @@ fn each_fact_family_scope_caps_the_fields_of_its_limits() {
     pin(
         HtmlCapScope::GlobalInheritance,
         HtmlGlobalInheritanceLimits::new(1, 2),
-        fact,
+        |name| match name {
+            // Spellcheck's byte ceiling derives from the same record limit.
+            "record_capacity" => {
+                Mapped::Resources(&[HtmlResource::FactRecords, HtmlResource::FactBytes])
+            }
+            other => fact(other),
+        },
     );
     pin(
         HtmlCapScope::OutputDefault,
