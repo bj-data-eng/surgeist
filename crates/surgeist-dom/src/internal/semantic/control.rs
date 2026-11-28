@@ -2,10 +2,10 @@
 use super::*;
 use surgeist_html::values::DocumentString;
 use surgeist_html_semantics::{
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
-    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
-    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFormAssociation,
-    HtmlFormAssociationState,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits,
+    HtmlCustomControlClassification, HtmlCustomErrorFact, HtmlElementReferenceFact,
+    HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
+    HtmlExplicitElementReference, HtmlFormAssociation, HtmlFormAssociationState,
 };
 
 /// Project qualified FACE positives and the existing HTML null-definition negatives.
@@ -55,9 +55,20 @@ pub(super) fn with_native_state(
     let mut textareas = Vec::new();
     let mut outputs = Vec::new();
     let mut options = Vec::new();
+    let mut custom_errors = Vec::new();
     for entry in entries {
         control.charge(1)?;
         let node = source.node(entry.node)?;
+        if let Some((state, _)) = node
+            .as_element()
+            .and_then(crate::internal::element::DomElement::native_control)
+        {
+            control.reserve(&mut custom_errors, 1)?;
+            custom_errors.push(HtmlCustomErrorFact::new(
+                entry.subject.clone(),
+                !state.message.is_empty(),
+            ));
+        }
         if let Some(option) = node.as_option() {
             control.reserve(&mut options, 1)?;
             options.push(surgeist_html_semantics::HtmlOptionControlState::new(
@@ -127,15 +138,18 @@ pub(super) fn with_native_state(
     let facts = HtmlControlFacts::new(
         capture,
         capture.host_facts_revision().clone(),
-        associations,
-        inputs,
-        options,
-        textareas,
+        HtmlControlFactRecords {
+            associations,
+            inputs,
+            options,
+            textareas,
+            custom_errors,
+        },
         HtmlControlFactsLimits::new(
             control
                 .limits
                 .subjects
-                .checked_mul(2)
+                .checked_mul(3)
                 .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
             control.limits.work,
         ),

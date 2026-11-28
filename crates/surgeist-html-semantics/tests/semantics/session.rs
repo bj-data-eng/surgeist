@@ -16,20 +16,20 @@ use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds,
-    HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlControlFlag, HtmlCustomControlClassification, HtmlDesignMode, HtmlDirectionality,
-    HtmlDocumentDesignModeFact, HtmlDocumentLanguageFallback, HtmlFlatTreeProducerId,
-    HtmlFlatTreeRevision, HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits,
-    HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision, HtmlInertFactLimits,
-    HtmlInertFacts, HtmlInputControlState, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
-    HtmlLanguageOrigin, HtmlListParticipation, HtmlListParticipationFact,
-    HtmlListParticipationRevision, HtmlParticipationProducerId, HtmlPragmaLanguage,
-    HtmlProgressState, HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailure, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlTranslationMode,
+    HtmlCapturedIsValue, HtmlCapturedNodeKind, HtmlControlFactRecords, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlControlFlag, HtmlCustomControlClassification, HtmlDesignMode,
+    HtmlDirectionality, HtmlDocumentDesignModeFact, HtmlDocumentLanguageFallback,
+    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlGlobalInheritanceFacts,
+    HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
+    HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState, HtmlLanguageDirectionFacts,
+    HtmlLanguageDirectionLimits, HtmlLanguageOrigin, HtmlListParticipation,
+    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlParticipationProducerId,
+    HtmlPragmaLanguage, HtmlProgressState, HtmlProtocolLanguage, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailure,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue, HtmlTranslationMode,
 };
 
 fn name(ns: Namespace, local: &str) -> QualifiedName {
@@ -2092,10 +2092,7 @@ fn empty_control_facts(c: &HtmlCapture) -> HtmlControlFacts {
     HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        vec![],
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords::default(),
         HtmlControlFactsLimits::new(0, 0),
     )
     .unwrap()
@@ -2277,16 +2274,16 @@ fn supplied_control_values_change_context_and_failure_identity() {
         let facts = HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            vec![HtmlInputControlState::new(
-                c.subject_id(&input).unwrap(),
-                Some(current),
-                None,
-                None,
-                None,
-            )],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                inputs: vec![HtmlInputControlState::new(
+                    c.subject_id(&input).unwrap(),
+                    Some(current),
+                    None,
+                    None,
+                    None,
+                )],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(1, 10000),
         )
         .unwrap();
@@ -2417,16 +2414,16 @@ fn late_inert_attribute_stop_publishes_no_completed_control_prefix() {
     let facts = HtmlControlFacts::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![],
-        vec![HtmlInputControlState::new(
-            c.subject_id(&input).unwrap(),
-            Some(false),
-            None,
-            None,
-            None,
-        )],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            inputs: vec![HtmlInputControlState::new(
+                c.subject_id(&input).unwrap(),
+                Some(false),
+                None,
+                None,
+                None,
+            )],
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1, 10000),
     )
     .unwrap();

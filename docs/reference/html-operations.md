@@ -1098,8 +1098,9 @@ full textarea setters/normalization and runtime events require their respective
 owners; these APIs do not certify a complete parse report or live transaction.
 
 `HtmlControlFacts` retains established current form pointers or explicit
-reset-against-capture evidence, plus independently optional current input, option
-and textarea flags. Form-owner queries preserve parser-established associations
+reset-against-capture evidence, independently optional current input, option and
+textarea flags, and the intrinsic custom-error flag for supported native
+controls. Form-owner queries preserve parser-established associations
 and distinguish them from a reset computed against this capture. Label targeting
 uses actual tree order and labelable classification. Known false flags remain
 distinct from unavailable slots; attributes do not substitute for current state.
@@ -1762,6 +1763,11 @@ Terminal admission, work and cancellation failures stay terminal. Results use
 the shared qualified session and atomic batch output. This supplies native
 willValidate semantics; it does not execute validation, produce validity or
 messages, or expose a live ElementInternals object.
+
+`CustomError` reads whether the canonical custom validity message is nonempty
+on Button, Fieldset, Input, Output, Select and Textarea. A barred control still
+has this flag. The capture carries the Boolean without copying the message.
+An applicable control without a qualified observation reports missing evidence.
 
 The form-default-button query selects the first owned submit button in ordinary
 tree order across the whole tree, including controls outside the form subtree.

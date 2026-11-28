@@ -13,13 +13,13 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedNodeKind, HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlCustomControlClassification, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlListedControlCollection, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlCapturedNodeKind, HtmlCapturedShadowProperties, HtmlControlFactRecords, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlListedControlCollection, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -87,13 +87,13 @@ fn context(
     let facts = HtmlControlFacts::new(
         &f.capture,
         f.capture.host_facts_revision().clone(),
-        states
-            .iter()
-            .map(|(i, s)| HtmlFormAssociation::new(f.ids[*i].clone(), s.clone()))
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: states
+                .iter()
+                .map(|(i, s)| HtmlFormAssociation::new(f.ids[*i].clone(), s.clone()))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

@@ -10,11 +10,12 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState,
-    HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlOptionText, HtmlSelectValue,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag,
+    HtmlOptionControlState, HtmlOptionReadback, HtmlOptionReadbackOrigin, HtmlOptionText,
+    HtmlSelectValue, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing,
+    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -67,13 +68,13 @@ fn context(c: &HtmlCapture, flags: &[(HtmlCaptureSubjectId, Option<bool>)]) -> H
     let controls = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        vec![],
-        vec![],
-        flags
-            .iter()
-            .map(|(id, v)| HtmlOptionControlState::new(id.clone(), *v, None))
-            .collect(),
-        vec![],
+        HtmlControlFactRecords {
+            options: flags
+                .iter()
+                .map(|(id, v)| HtmlOptionControlState::new(id.clone(), *v, None))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

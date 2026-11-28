@@ -8,11 +8,11 @@ use surgeist_html::values::{
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFactRecords,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlOptionControlState,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn element(
@@ -57,13 +57,13 @@ fn context(
     let facts = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        vec![],
-        vec![],
-        selected
-            .iter()
-            .map(|(id, v)| HtmlOptionControlState::new(id.clone(), *v, None))
-            .collect(),
-        vec![],
+        HtmlControlFactRecords {
+            options: selected
+                .iter()
+                .map(|(id, v)| HtmlOptionControlState::new(id.clone(), *v, None))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

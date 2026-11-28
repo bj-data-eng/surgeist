@@ -192,6 +192,34 @@ impl HtmlTextareaControlState {
         self.dirty_value
     }
 }
+
+/// The state of the custom validity message on a supported native control.
+/// The producer records whether the canonical message is nonempty.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HtmlCustomErrorFact {
+    subject: HtmlCaptureSubjectId,
+    custom_error: bool,
+}
+impl HtmlCustomErrorFact {
+    pub fn new(subject: HtmlCaptureSubjectId, custom_error: bool) -> Self {
+        Self {
+            subject,
+            custom_error,
+        }
+    }
+}
+
+/// Unqualified producer records. [`HtmlControlFacts`] checks capture identity,
+/// applicability and uniqueness before making these facts available to queries.
+#[derive(Debug, Default)]
+pub struct HtmlControlFactRecords {
+    pub associations: Vec<HtmlFormAssociation>,
+    pub inputs: Vec<HtmlInputControlState>,
+    pub options: Vec<HtmlOptionControlState>,
+    pub textareas: Vec<HtmlTextareaControlState>,
+    pub custom_errors: Vec<HtmlCustomErrorFact>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlFlag {
     Checkedness,
@@ -200,6 +228,21 @@ pub enum HtmlControlFlag {
     DirtyCheckedness,
     OptionDirtiness,
     Indeterminateness,
+    CustomError,
+}
+
+fn supports_custom_error(kind: Option<KnownHtmlElement>) -> bool {
+    matches!(
+        kind,
+        Some(
+            KnownHtmlElement::Button
+                | KnownHtmlElement::Fieldset
+                | KnownHtmlElement::Input
+                | KnownHtmlElement::Output
+                | KnownHtmlElement::Select
+                | KnownHtmlElement::Textarea
+        )
+    )
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -283,10 +326,12 @@ pub struct HtmlControlFacts {
     inputs: Vec<HtmlInputControlState>,
     options: Vec<HtmlOptionControlState>,
     textareas: Vec<HtmlTextareaControlState>,
+    custom_errors: Vec<HtmlCustomErrorFact>,
     association_index: FactIndex,
     input_index: FactIndex,
     option_index: FactIndex,
     textarea_index: FactIndex,
+    custom_error_index: FactIndex,
     validation: ScanMeter<HtmlControlFactsError>,
 }
 impl ScanError for HtmlControlFactsError {
@@ -324,73 +369,46 @@ impl HtmlControlFacts {
     pub fn new(
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
-        associations: Vec<HtmlFormAssociation>,
-        inputs: Vec<HtmlInputControlState>,
-        options: Vec<HtmlOptionControlState>,
-        textareas: Vec<HtmlTextareaControlState>,
+        records: HtmlControlFactRecords,
         limits: HtmlControlFactsLimits,
     ) -> Result<Self, HtmlControlFactsError> {
-        Self::build(
-            capture,
-            host_revision,
-            associations,
-            inputs,
-            options,
-            textareas,
-            limits,
-            None,
-        )
+        Self::build(capture, host_revision, records, limits, None)
     }
     /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
     /// charges an operation of its own. The schema module documentation of
     /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the arguments of the constructor and the host scope"
-    )]
     pub fn with_accounting(
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
-        associations: Vec<HtmlFormAssociation>,
-        inputs: Vec<HtmlInputControlState>,
-        options: Vec<HtmlOptionControlState>,
-        textareas: Vec<HtmlTextareaControlState>,
+        records: HtmlControlFactRecords,
         limits: HtmlControlFactsLimits,
         accounting: &HtmlHostScope,
     ) -> Result<Self, HtmlControlFactsError> {
-        Self::build(
-            capture,
-            host_revision,
-            associations,
-            inputs,
-            options,
-            textareas,
-            limits,
-            Some(accounting),
-        )
+        Self::build(capture, host_revision, records, limits, Some(accounting))
     }
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the arguments of the constructor and the host scope"
-    )]
     fn build(
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
-        associations: Vec<HtmlFormAssociation>,
-        inputs: Vec<HtmlInputControlState>,
-        options: Vec<HtmlOptionControlState>,
-        textareas: Vec<HtmlTextareaControlState>,
+        records: HtmlControlFactRecords,
         limits: HtmlControlFactsLimits,
         hosted: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlControlFactsError> {
         if capture.host_facts_revision() != &host_revision {
             return Err(HtmlControlFactsError::HostRevisionMismatch);
         }
+        let HtmlControlFactRecords {
+            associations,
+            inputs,
+            options,
+            textareas,
+            custom_errors,
+        } = records;
         let required = associations
             .capacity()
             .checked_add(inputs.capacity())
             .and_then(|n| n.checked_add(options.capacity()))
             .and_then(|n| n.checked_add(textareas.capacity()))
+            .and_then(|n| n.checked_add(custom_errors.capacity()))
             .ok_or(HtmlControlFactsError::RepresentationExhausted)?;
         let mut validation = ScanMeter::charging(
             HtmlCapScope::ControlFacts,
@@ -536,6 +554,34 @@ impl HtmlControlFacts {
                 ));
             }
         }
+        let mut custom_error_index = FactIndex::new(
+            capture.identity(),
+            custom_errors.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
+        for (position, fact) in custom_errors.iter().enumerate() {
+            custom_error_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in custom_errors.iter().enumerate() {
+            validation.charge(1)?;
+            let node = validation.node(capture, &fact.subject)?;
+            let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+                return Err(HtmlControlFactsError::InapplicableSubject(
+                    fact.subject.clone(),
+                ));
+            };
+            if !supports_custom_error(validation.known(element)?) {
+                return Err(HtmlControlFactsError::InapplicableSubject(
+                    fact.subject.clone(),
+                ));
+            }
+            if custom_error_index.position(&fact.subject) != Some(position) {
+                return Err(HtmlControlFactsError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
+            }
+        }
         Ok(Self {
             capture: capture.identity().clone(),
             host_revision,
@@ -543,10 +589,12 @@ impl HtmlControlFacts {
             inputs,
             options,
             textareas,
+            custom_errors,
             association_index,
             input_index,
             option_index,
             textarea_index,
+            custom_error_index,
             validation,
         })
     }
@@ -1599,14 +1647,22 @@ impl<'a> HtmlSemanticSession<'a> {
                 kind,
                 Some(KnownHtmlElement::Input | KnownHtmlElement::Textarea)
             ),
+            HtmlControlFlag::CustomError => supports_custom_error(kind),
         };
         if !applicable {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         let mut value = None;
         if let Some(facts) = self.context.controls() {
-            match kind {
-                Some(KnownHtmlElement::Input) => {
+            match (flag, kind) {
+                (HtmlControlFlag::CustomError, _) => {
+                    self.charge(1)?;
+                    value = facts
+                        .custom_error_index
+                        .position(subject)
+                        .map(|position| facts.custom_errors[position].custom_error);
+                }
+                (_, Some(KnownHtmlElement::Input)) => {
                     self.charge(1)?;
                     if let Some(position) = facts.input_index.position(subject) {
                         let fact = &facts.inputs[position];
@@ -1619,7 +1675,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         };
                     }
                 }
-                Some(KnownHtmlElement::Option) => {
+                (_, Some(KnownHtmlElement::Option)) => {
                     self.charge(1)?;
                     if let Some(position) = facts.option_index.position(subject) {
                         let fact = &facts.options[position];
@@ -1630,7 +1686,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         };
                     }
                 }
-                Some(KnownHtmlElement::Textarea) => {
+                (_, Some(KnownHtmlElement::Textarea)) => {
                     self.charge(1)?;
                     if let Some(position) = facts.textarea_index.position(subject) {
                         value = facts.textareas[position].dirty_value();

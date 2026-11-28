@@ -17,11 +17,11 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlAutocompleteDefaultResolution, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlAutocomplete,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing,
-    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
-    HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -72,10 +72,10 @@ fn context(f: &Fixture, state: Option<HtmlFormAssociationState>) -> HtmlSemantic
             HtmlControlFacts::new(
                 &f.capture,
                 f.capture.host_facts_revision().clone(),
-                vec![HtmlFormAssociation::new(f.control.clone(), state)],
-                vec![],
-                vec![],
-                vec![],
+                HtmlControlFactRecords {
+                    associations: vec![HtmlFormAssociation::new(f.control.clone(), state)],
+                    ..HtmlControlFactRecords::default()
+                },
                 HtmlControlFactsLimits::new(10, 1000000),
             )
             .unwrap(),

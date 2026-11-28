@@ -15,12 +15,12 @@ use surgeist_html::{
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue, HtmlSubmitterTypeObservation,
+    HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlControlFactRecords, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticUnsupported, HtmlSemanticValue, HtmlSubmitterTypeObservation,
 };
 use surgeist_html_semantics::{
     HtmlFormEnctypeSelection, HtmlFormMethodSelection, HtmlSubmitterFormEnctype,
@@ -82,10 +82,10 @@ fn context(f: &Fixture, state: Option<HtmlFormAssociationState>) -> HtmlSemantic
             HtmlControlFacts::new(
                 &f.capture,
                 f.capture.host_facts_revision().clone(),
-                vec![HtmlFormAssociation::new(f.control.clone(), state)],
-                vec![],
-                vec![],
-                vec![],
+                HtmlControlFactRecords {
+                    associations: vec![HtmlFormAssociation::new(f.control.clone(), state)],
+                    ..HtmlControlFactRecords::default()
+                },
                 HtmlControlFactsLimits::new(10, 1000000),
             )
             .unwrap(),
