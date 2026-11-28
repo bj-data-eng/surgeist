@@ -5,6 +5,10 @@ pub use crate::internal::elements::dialog::focusing::{
     HtmlDialogFocusingError, HtmlDialogFocusingReply, HtmlDialogSubjectFocusFacts,
     HtmlDialogSubjectFocusingDecision, dialog_subject_focusing_decision,
 };
+pub use crate::internal::elements::dialog::light_dismiss::{
+    HtmlDialogLightDismissAction, HtmlDialogLightDismissCursor, HtmlDialogLightDismissKind,
+    HtmlDialogLightDismissOutcome, HtmlDialogLightDismissReply, HtmlDialogLightDismissReplyError,
+};
 pub use crate::internal::elements::dialog::request::{
     HtmlCloseWatcherRequestAction, HtmlCloseWatcherRequestCursor, HtmlCloseWatcherRequestError,
     HtmlCloseWatcherRequestReply, HtmlCloseWatcherStateError,

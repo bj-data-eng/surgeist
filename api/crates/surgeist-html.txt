@@ -4329,6 +4329,40 @@ pub surgeist_html::elements::dialog::HtmlDialogFocusingReply::Applied
 pub surgeist_html::elements::dialog::HtmlDialogFocusingReply::Autofocus(bool)
 pub surgeist_html::elements::dialog::HtmlDialogFocusingReply::FocusDelegatePresent(bool)
 pub surgeist_html::elements::dialog::HtmlDialogFocusingReply::SameOrigin(bool)
+pub enum surgeist_html::elements::dialog::HtmlDialogLightDismissAction
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::CaptureCloseWatcher
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::CaptureNearestClickedDialog
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::CaptureTargetDocument
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::ClearPointerDownTarget
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::CloseWatcher(surgeist_html::elements::dialog::HtmlCloseWatcherRequestAction)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::CompareLastOpenDialog
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::ComparePointerDownTarget
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::Complete(surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::ReadClosedBy
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::ReadEventTrusted
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::ReadOpenDialogsEmpty
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissAction::StorePointerDownTarget
+pub enum surgeist_html::elements::dialog::HtmlDialogLightDismissKind
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissKind::PointerDown
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissKind::PointerUp
+pub enum surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome::Finished
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome::MissingCloseWatcher
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome::UntrustedEvent
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome::WatcherFinished
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissOutcome::WatcherFinished::should_continue: bool
+pub enum surgeist_html::elements::dialog::HtmlDialogLightDismissReply
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::CloseWatcher(surgeist_html::elements::dialog::HtmlCloseWatcherRequestReply)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::CloseWatcherPresent(bool)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::ClosedBy(surgeist_html::attributes::HtmlClosedBy)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::EventTrusted(bool)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::LastOpenDialogMatches(bool)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::NearestClickedDialogCaptured
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::OpenDialogsEmpty(bool)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::PointerDownTargetCleared
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::PointerDownTargetMatches(bool)
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::PointerDownTargetStored
+pub surgeist_html::elements::dialog::HtmlDialogLightDismissReply::TargetDocumentCaptured
 pub enum surgeist_html::elements::dialog::HtmlDialogOperation
 pub surgeist_html::elements::dialog::HtmlDialogOperation::Close
 pub surgeist_html::elements::dialog::HtmlDialogOperation::Close::result_present: bool
@@ -4441,6 +4475,20 @@ pub const fn surgeist_html::elements::dialog::HtmlDialogFreshState::has_request_
 pub const fn surgeist_html::elements::dialog::HtmlDialogFreshState::has_toggle_task_tracker(&self) -> bool
 pub const fn surgeist_html::elements::dialog::HtmlDialogFreshState::is_modal(&self) -> bool
 pub const fn surgeist_html::elements::dialog::HtmlDialogFreshState::return_value(&self) -> &'static str
+pub struct surgeist_html::elements::dialog::HtmlDialogLightDismissCursor
+impl surgeist_html::elements::dialog::HtmlDialogLightDismissCursor
+pub const fn surgeist_html::elements::dialog::HtmlDialogLightDismissCursor::action(&self) -> surgeist_html::elements::dialog::HtmlDialogLightDismissAction
+pub const fn surgeist_html::elements::dialog::HtmlDialogLightDismissCursor::new(kind: surgeist_html::elements::dialog::HtmlDialogLightDismissKind) -> Self
+pub fn surgeist_html::elements::dialog::HtmlDialogLightDismissCursor::reply(&mut self, reply: surgeist_html::elements::dialog::HtmlDialogLightDismissReply) -> core::result::Result<(), surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError>
+pub struct surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError
+impl surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError
+pub const fn surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError::close_watcher_error(&self) -> core::option::Option<&surgeist_html::elements::dialog::HtmlCloseWatcherRequestError>
+pub const fn surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError::is_terminal(&self) -> bool
+pub const fn surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError::is_wrong_reply(&self) -> bool
+impl core::error::Error for surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError
+pub fn surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError
+pub fn surgeist_html::elements::dialog::HtmlDialogLightDismissReplyError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html::elements::dialog::HtmlDialogOpenChange
 impl surgeist_html::elements::dialog::HtmlDialogOpenChange
 pub const fn surgeist_html::elements::dialog::HtmlDialogOpenChange::new_present(self) -> bool
