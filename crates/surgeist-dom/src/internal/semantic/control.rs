@@ -146,11 +146,7 @@ pub(super) fn with_native_state(
             custom_errors,
         },
         HtmlControlFactsLimits::new(
-            control
-                .limits
-                .subjects
-                .checked_mul(3)
-                .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
+            control.limits.subjects.saturating_mul(3),
             control.limits.work,
         ),
     )

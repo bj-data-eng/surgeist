@@ -105,8 +105,9 @@ independently caps shared control validation including its context join. Checked
 move-only facts are rebuilt from the retained snapshot and subject map.
 For `CustomError`, the adapter observes whether the canonical message is
 nonempty on the six native control families that store it. The moved
-control-facts capacity ceiling is three times the subject limit to include the
-custom-error flag alongside association and family-specific records. The message
+control-facts capacity ceiling is three times the subject limit, clamped to the
+representable maximum. It covers the custom-error flag alongside association
+and family-specific records. The message
 payload remains in the canonical control state. This native control adapter does not execute constraint
 validation, report/check validity, expose a complete ValidityState schema or
 provide validation UI/events. A nonempty Fieldset custom error does not make it

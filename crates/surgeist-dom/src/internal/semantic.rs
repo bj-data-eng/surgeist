@@ -75,7 +75,9 @@ use crate::{
 /// formation, including Slot context reconstruction; it is not a cumulative
 /// producer work meter across separate formations.
 /// Producer allocations obey the supplied HtmlCaptureLimits.
-/// Control facts admit up to twice subjects (association plus actual Input flags).
+/// Control facts admit combined record capacity up to three times `subjects`,
+/// clamped to the representable maximum. A subject can carry an association,
+/// family-specific flags and a custom-error fact.
 /// Applicable current values use the shared HTML type predicate and the supplied
 /// capture UTF-16 ceiling; Slot supplementation uses its explicit language limits.
 /// Initial Document modal rows use `subjects` and independently bounded producer
