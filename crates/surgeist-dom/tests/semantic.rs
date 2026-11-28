@@ -192,6 +192,31 @@ fn captured_native_custom_error_tracks_only_the_canonical_message() {
 }
 
 #[test]
+fn large_subject_limit_admits_small_native_control_capture() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let input = batch.create_element_ns(&document, Namespace::html(), "input");
+    let commit = apply(&mut dom, batch);
+    let input = commit.created(&input).unwrap().unwrap();
+    let capture = dom
+        .snapshot()
+        .html_capture(
+            commit.document(&document).unwrap(),
+            None,
+            limits(),
+            DomHtmlCaptureLimits::new(usize::MAX / 3 + 1, 1_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let report = query(&capture, input, HtmlSemanticQuery::CustomError);
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(false))
+    );
+}
+
+#[test]
 fn xml_language_inheritance_uses_the_real_producer_and_maps_the_selecting_ancestor() {
     let mut dom = dom();
     let mut batch = DomBatch::new();
