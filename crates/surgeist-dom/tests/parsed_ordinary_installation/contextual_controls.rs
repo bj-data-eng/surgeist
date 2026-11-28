@@ -149,6 +149,29 @@ fn captured_form_context_stays_historical_while_insertion_clone_and_adoption_res
         &[input, select]
     );
     assert_eq!(detached.node(select).unwrap().children(), &[option]);
+    let root = detached
+        .node(select)
+        .unwrap()
+        .hosted_shadow_root()
+        .expect("parsed Select owns the same UA fallback as native creation");
+    let shadow = detached.shadow_root(root).unwrap();
+    assert_eq!(shadow.host(), select);
+    let [button_slot, content_slot] = shadow.node().children() else {
+        panic!("Select shadow contains the button and content slots");
+    };
+    let button_slot = detached.node(*button_slot).unwrap().as_slot().unwrap();
+    let fallback = detached.node(button_slot.node().children()[0]).unwrap();
+    assert_eq!(fallback.node_name(), DocumentString::from("div"));
+    let content_slot = detached.node(*content_slot).unwrap().as_slot().unwrap();
+    assert_eq!(content_slot.assigned_nodes(), &[option]);
+    assert_eq!(
+        detached
+            .node(option)
+            .unwrap()
+            .stored_assigned_slot()
+            .unwrap(),
+        Some(content_slot.id())
+    );
     assert!(detached.node(host).unwrap().children().is_empty());
     assert_eq!(
         detached

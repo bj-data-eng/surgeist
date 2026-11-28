@@ -1306,6 +1306,32 @@ fn contextual_disabled_script_prefix_and_style_keep_distinct_actual_parser_histo
 }
 
 #[test]
+fn contextual_installation_keeps_select_fallback_under_its_native_owner() {
+    let (mut dom, capture, _, select) = fragment_fixture("select");
+    let before = dom.snapshot();
+    let root = before.node(select).unwrap().hosted_shadow_root().unwrap();
+    let button_slot = before.node(root).unwrap().children()[0];
+    let fallback = before.node(button_slot).unwrap().children()[0];
+    let report = fragment_report(
+        &capture,
+        fallback,
+        HtmlSource::utf8("<template shadowrootmode=open><b>fragment</b></template>"),
+        true,
+    );
+    let usage = dom.usage();
+    let result =
+        dom.install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false));
+    assert!(matches!(
+        result,
+        Err(DomParsedHtmlInstallError::Target(DomError::NotSupported))
+    ));
+    let after = dom.snapshot();
+    assert_eq!(after.stamp(), before.stamp());
+    assert_eq!(dom.usage(), usage);
+    assert_eq!(after.node(fallback).unwrap().hosted_shadow_root(), None);
+}
+
+#[test]
 fn contextual_dsd_applies_captured_and_owned_effects_and_preserves_fallback_template() {
     let (mut dom, capture, document, host) = fragment_fixture("div");
     let report = fragment_report(

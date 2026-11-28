@@ -228,6 +228,22 @@ and permission so raising the caller's limits can complete it exactly once.
 Detach/adopt preserve intentions. No browser event loop, picker or rendering
 resources are implied by these intrinsic checkpoints.
 
+### Native Select shadow ownership
+
+A native Select owns a closed shadow tree with a button Slot, its fallback Div,
+and a content Slot. Creation and retained parser installation admit those
+identities with the Select, and copies initialize a fresh owned tree. Adoption
+moves the original tree to the destination Document. Destroying the Select
+retires its owned nodes, with older snapshots retaining their original facts.
+
+The button Slot receives the first direct Element when it is an HTML Button.
+The content Slot receives the other slottable children in ordinary order.
+These relationships determine stored assignments and fresh flat traversal.
+Privileged snapshots can inspect them. Author-facing shadow and assigned-slot
+reads do not expose the closed root, and ordinary edit commands cannot target
+its owned nodes directly. The two Slots use shared reference limits without
+generating author Slot change notifications. Layout controls presentation.
+
 ## Reflected Element targets
 
 `set_command_for_element` and `set_popover_target_element` drive HTML's actual

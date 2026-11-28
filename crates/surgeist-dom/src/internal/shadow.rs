@@ -57,12 +57,34 @@ impl From<HtmlShadowRootProperties> for DomShadowRootInit {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DomShadowRootState {
     properties: HtmlShadowRootProperties,
+    owner: ShadowRootOwner,
     available_to_element_internals: bool,
     declarative: bool,
     registry: DomRegistryBinding,
     keep_custom_element_registry_null: bool,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ShadowRootOwner {
+    Author,
+    Select,
+}
 impl DomShadowRootState {
+    /// Select supplies its own distribution rule and owns the complete tree.
+    pub(crate) fn for_select() -> Self {
+        Self {
+            properties: DomShadowRootInit::new(HtmlShadowRootMode::Closed).properties,
+            owner: ShadowRootOwner::Select,
+            available_to_element_internals: false,
+            declarative: false,
+            registry: DomRegistryBinding::Null,
+            keep_custom_element_registry_null: true,
+        }
+    }
+
+    pub(crate) fn is_select_root(self) -> bool {
+        self.owner == ShadowRootOwner::Select
+    }
+
     pub(crate) fn require_declarative_reuse(
         self,
         mode: HtmlShadowRootMode,
@@ -103,6 +125,7 @@ impl DomShadowRootState {
     ) -> Self {
         Self {
             properties,
+            owner: ShadowRootOwner::Author,
             keep_custom_element_registry_null: keep_registry_null,
             declarative,
             available_to_element_internals: available_to_internals,
@@ -112,6 +135,7 @@ impl DomShadowRootState {
     pub(crate) fn native(init: DomShadowRootInit, registry: DomRegistryBinding) -> Self {
         Self {
             properties: init.properties,
+            owner: ShadowRootOwner::Author,
             available_to_element_internals: false,
             declarative: false,
             registry,

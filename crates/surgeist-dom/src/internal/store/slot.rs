@@ -194,6 +194,9 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         self.source_step(cancel)?;
+        if self.is_select_shadow(slot::root(self, slot, cancel)?)? {
+            return Ok(());
+        }
         if !self.slot_signal_contains(slot, cancel)? {
             let count = self
                 .slot_reference_count(cancel)?
@@ -243,7 +246,8 @@ impl Draft {
             .assigned_nodes()
             .iter()
             .eq(nodes.iter().copied());
-        let new_signal = changed && !self.slot_signal_contains(key, cancel)?;
+        let signal = changed && !self.is_select_shadow(slot::root(self, key, cancel)?)?;
+        let new_signal = signal && !self.slot_signal_contains(key, cancel)?;
         let required = self
             .slot_reference_count(cancel)?
             .checked_sub(self.node(key)?.assigned_nodes().len())
@@ -257,7 +261,7 @@ impl Draft {
         )?;
         // Admission uses the installed replacement, allowing exact-capacity
         // shrinking changes even though source signals before replacing.
-        if changed {
+        if signal {
             if new_signal {
                 self.slot_signal_push(key, cancel)?;
             }
@@ -288,6 +292,23 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
+        if self.is_select_shadow(root)? {
+            let slots = slot::SelectSlots::read(self, root, cancel)?;
+            let host = self.node(root)?.host().ok_or(DomError::StaleNode)?;
+            let adds_button = self.node(slots.button)?.assigned_nodes().is_empty()
+                && slot::first_element_button(self, host, cancel)?.is_some();
+            // Shrink the previous side before growing the new one, so a
+            // redistribution uses its final SlotReferences capacity.
+            let order = if adds_button {
+                [slots.content, slots.button]
+            } else {
+                [slots.button, slots.content]
+            };
+            for slot in order {
+                self.assign_slottables(slot, limits, cancel)?;
+            }
+            return Ok(());
+        }
         let mut current = self.slot_after(root, None, &mut || self.source_step(cancel))?;
         while let Some(key) = current {
             self.source_step(cancel)?;
@@ -451,13 +472,61 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if let Some(root) = self.node(parent)?.shadow_root()
-            && matches!(self.node(root)?.kind(),transaction::KindRead::ShadowRoot(state) if state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
             && slot::is_slottable(self.node(node)?.kind().into())
         {
-            self.assign_a_slot(node, limits, cancel)?;
+            if self.is_select_shadow(root)? {
+                self.insert_select_slottable(node, parent, root, limits, cancel)?;
+            } else if matches!(self.node(root)?.kind(),transaction::KindRead::ShadowRoot(state) if state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
+            {
+                self.assign_a_slot(node, limits, cancel)?;
+            }
         }
         self.signal_fallback_parent(parent, limits, cancel)?;
         self.assign_tree(slot::root(self, node, cancel)?, limits, cancel)
+    }
+
+    fn insert_select_slottable(
+        &mut self,
+        node: Key,
+        host: Key,
+        root: Key,
+        limits: DomLimits,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let children = self.node(host)?.children();
+        let inserted = self.node(node)?;
+        if children
+            .len()
+            .checked_sub(1)
+            .and_then(|last| children.get(last))
+            != Some(node)
+            || inserted.assigned_slot().is_some()
+        {
+            return self.assign_tree(root, limits, cancel);
+        }
+        // Appending cannot replace the first Element. An appended Button can
+        // take the button slot only if it is itself the first Element.
+        let slots = slot::SelectSlots::read(self, root, cancel)?;
+        let is_button = matches!(inserted.kind(), transaction::KindRead::Element(element) if element.language().button_state().is_some());
+        let target = if is_button && slot::first_element_button(self, host, cancel)? == Some(node) {
+            slots.button
+        } else {
+            slots.content
+        };
+        let required = self
+            .slot_reference_count(cancel)?
+            .checked_add(1)
+            .ok_or(DomError::RepresentationExhausted)?;
+        admit(
+            required,
+            limits.slot_references,
+            DomResource::SlotReferences,
+        )?;
+        let index = self.node(target)?.assigned_nodes().len();
+        self.relations_insert(target, RelationField::AssignedNodes, index, &[node], cancel)?;
+        let mut slottable = self.slottable_fields_mut(node, cancel)?;
+        slottable.assigned_slot = Some(target);
+        slottable.commit(cancel)
     }
     fn signal_fallback_parent(
         &mut self,
@@ -483,7 +552,19 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        if let Some(slot) = self.node(node)?.assigned_slot() {
+        if self.node(parent)?.common().ua_owned {
+            // The host retires its light children before tearing down these
+            // owned relations. A partially retired root cannot distribute.
+            return Ok(());
+        }
+        if let Some(root) = self.select_shadow_root(parent)?
+            && slot::is_slottable(self.node(node)?.kind().into())
+        {
+            self.assign_tree(root, limits, cancel)?;
+            let mut slottable = self.slottable_fields_mut(node, cancel)?;
+            slottable.assigned_slot = None;
+            slottable.commit(cancel)?;
+        } else if let Some(slot) = self.node(node)?.assigned_slot() {
             self.assign_slottables(slot, limits, cancel)?;
         }
         self.signal_fallback_parent(parent, limits, cancel)?;
@@ -495,6 +576,18 @@ impl Draft {
             self.assign_tree(node, limits, cancel)?;
         }
         Ok(())
+    }
+    fn is_select_shadow(&self, key: Key) -> Result<bool, DomError> {
+        Ok(
+            matches!(self.node(key)?.kind(), transaction::KindRead::ShadowRoot(state) if state.is_select_root()),
+        )
+    }
+
+    pub(super) fn select_shadow_root(&self, host: Key) -> Result<Option<Key>, DomError> {
+        let Some(root) = self.node(host)?.shadow_root() else {
+            return Ok(None);
+        };
+        Ok(self.is_select_shadow(root)?.then_some(root))
     }
     pub(super) fn slot_attribute(
         &mut self,
@@ -512,6 +605,12 @@ impl Draft {
         let is_name = self.source_ascii(attribute, "name", cancel)?;
         let is_slot = self.source_ascii(attribute, "slot", cancel)?;
         if !is_name && !is_slot {
+            return Ok(());
+        }
+        if is_slot
+            && let Some(parent) = self.node(node)?.parent()
+            && self.select_shadow_root(parent)?.is_some()
+        {
             return Ok(());
         }
         let new = slot::name_admitted(

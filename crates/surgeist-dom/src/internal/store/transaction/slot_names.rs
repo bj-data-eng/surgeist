@@ -190,7 +190,7 @@ fn fact(
 ) -> Result<Option<Fact>, DomError> {
     let key = order.normalize(key);
     let node = order.node(key)?;
-    let slot = if crate::internal::slot::is_slot(node.kind().into()) {
+    let slot = if !node.common().ua_owned && crate::internal::slot::is_slot(node.kind().into()) {
         let (value, usage) = read_name(
             node.kind(),
             "name",
@@ -213,7 +213,7 @@ fn fact(
         let parent = order.node(position.parent)?;
         if let Some(shadow) = parent.shadow_root() {
             let root = order.node(shadow)?;
-            if matches!(root.kind(),KindRead::ShadowRoot(state) if state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
+            if matches!(root.kind(),KindRead::ShadowRoot(state) if !state.is_select_root() && state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
                 && root.host().map(|host| order.normalize(host)) == Some(position.parent)
             {
                 let (value, usage) = read_name(

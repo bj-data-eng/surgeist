@@ -516,7 +516,7 @@ fn live_select_copy(meta: Option<surgeist_dom::meta::DomMetaAtomicLimits>) {
             256,
             100_000,
             1024,
-            0,
+            3,
             0,
             16,
             1_000_000,

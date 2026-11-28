@@ -441,6 +441,7 @@ impl<'a> NodeRead<'a> {
                     document: Key::Existing(n.common().document),
                     relevant_global: n.common().relevant_global,
                     parent: n.common().parent.map(Key::Existing),
+                    ua_owned: n.common().ua_owned,
                 },
                 Source::Staged(n) => *n.common(),
             }

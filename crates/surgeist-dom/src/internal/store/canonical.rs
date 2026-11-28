@@ -10,6 +10,8 @@ pub(crate) struct Common<K> {
     pub document: K,
     pub relevant_global: Option<crate::internal::hosted::DomHostedGlobalId>,
     pub parent: Option<K>,
+    /// The owning native control is the only writer of this node.
+    pub ua_owned: bool,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct NodeSequence<K> {

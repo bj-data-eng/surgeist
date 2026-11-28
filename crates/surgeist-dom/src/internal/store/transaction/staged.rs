@@ -430,6 +430,7 @@ fn common(value: &Common<NodeId>) -> Common<Key> {
         document: Key::Existing(value.document),
         parent: value.parent.map(Key::Existing),
         relevant_global: value.relevant_global,
+        ua_owned: value.ua_owned,
     }
 }
 impl DraftNode {

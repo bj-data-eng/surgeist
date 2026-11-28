@@ -1694,6 +1694,21 @@ impl Dom {
             }
         }
         state::metadata(&source, &mut draft, self.limits, &mut c)?;
+        // Retained light children are already installed. Construct and assign
+        // the native Select tree against that actual order in this Draft.
+        for row in &source.rows {
+            c.step(1)?;
+            if matches!(row.source.kind(), HtmlNodeKind::Element(_)) {
+                let key = row.key.ok_or(Error::UnsupportedState {
+                    subject: row.source.id(),
+                })?;
+                if matches!(draft.node(key)?.kind(), transaction::KindRead::Element(element) if element.select_state().is_some())
+                {
+                    c.step(row.source.children().len())?;
+                    draft.initialize_select_shadow(key, self.limits, cancelled)?;
+                }
+            }
+        }
         if capture.is_some() {
             apply_fragment_effects(&report, &source, &mut draft, self.limits, &mut c)?;
             qualify_captured_hyperlinks(&source, &draft, &mut c)?;

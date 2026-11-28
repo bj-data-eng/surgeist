@@ -1054,6 +1054,15 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
             })
             .collect::<Vec<_>>()
     };
+    let select_owns = |root: NodeId| {
+        state
+            .node(owner, root)
+            .unwrap()
+            .host()
+            .is_some_and(|id| {
+                matches!(state.node(owner, id).unwrap().kind(), DomNodeKind::Element(element) if element.select_state().is_some())
+            })
+    };
     let mut facts = HashMap::new();
     let mut groups = HashMap::<(usize, NodeId, Option<DocumentString>), Vec<NodeId>>::new();
     for (index, slot) in state.slots.iter() {
@@ -1065,7 +1074,7 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
         };
         let slot = if matches!(&node.kind(),DomNodeKind::Element(element) if element.is_slot()) {
             let root = *ancestor_path(state, owner, id).first().unwrap();
-            Some((root, name(node, &[110, 97, 109, 101])))
+            (!select_owns(root)).then(|| (root, name(node, &[110, 97, 109, 101])))
         } else {
             None
         };
@@ -1075,8 +1084,9 @@ fn assert_slot_names(owner: DomOwnerId, state: &State) {
         ) {
             node.parent().and_then(|parent|{
                 let host=state.node(owner,parent).unwrap();
-                let shadow=host.shadow_root().and_then(|root|state.node(owner,root).ok())?;
-                (matches!(&shadow.kind(),DomNodeKind::ShadowRoot(value) if value.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)&&shadow.host()==Some(parent))
+                let root = host.shadow_root()?;
+                let shadow = state.node(owner, root).ok()?;
+                (!select_owns(root) && matches!(&shadow.kind(),DomNodeKind::ShadowRoot(value) if value.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)&&shadow.host()==Some(parent))
                     .then(||(parent,name(node,&[115,108,111,116])))
             })
         } else {
