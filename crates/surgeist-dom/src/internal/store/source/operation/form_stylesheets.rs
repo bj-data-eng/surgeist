@@ -18,7 +18,7 @@ pub enum DomFormResetPublicationError {
     /// The hosted issuer or handoff refused a reached child removal.
     Hosted(DomHostedError),
     /// The original stylesheet owner refused its portion of the reset body.
-    Cssom { root: NodeId, error: CssomError },
+    Cssom(CssomError),
 }
 
 impl std::fmt::Display for DomFormResetPublicationError {
@@ -26,9 +26,7 @@ impl std::fmt::Display for DomFormResetPublicationError {
         match self {
             Self::Dom(error) => error.fmt(f),
             Self::Hosted(error) => error.fmt(f),
-            Self::Cssom { root, error } => {
-                write!(f, "Form stylesheet removal at {root:?}: {error}")
-            }
+            Self::Cssom(error) => error.fmt(f),
         }
     }
 }
@@ -38,7 +36,7 @@ impl std::error::Error for DomFormResetPublicationError {
         match self {
             Self::Dom(error) => Some(error),
             Self::Hosted(error) => Some(error),
-            Self::Cssom { error, .. } => Some(error),
+            Self::Cssom(error) => Some(error),
         }
     }
 }
@@ -188,21 +186,26 @@ impl Operation {
         formation::reserve(&mut retirement, roots.len(), budget.as_ref(), cancel)?;
         for (owner, store) in roots.iter().zip(&mut writers) {
             let root = owner.root();
-            let cssom = |error| DomFormResetPublicationError::Cssom { root, error };
             let snapshot = store.snapshot();
             let mut batch = store
                 .batch(CssomEditGuard::from_snapshot(&snapshot))
-                .map_err(cssom)?;
+                .map_err(DomFormResetPublicationError::Cssom)?;
             for sheet in sheets {
                 self.draft.source_step(cancel)?;
                 if sheet.root() == root {
                     if sheet.revision().owner() != snapshot.owner() {
                         return Err(DomError::StyleReceiptMismatch.into());
                     }
-                    batch.remove_sheet(sheet.id()).map_err(cssom)?;
+                    batch
+                        .remove_sheet(sheet.id())
+                        .map_err(DomFormResetPublicationError::Cssom)?;
                 }
             }
-            prepared.push(store.prepare_commit(batch).map_err(cssom)?);
+            prepared.push(
+                store
+                    .prepare_commit(batch)
+                    .map_err(DomFormResetPublicationError::Cssom)?,
+            );
         }
         let result = publish(self, dom)?;
         for edit in prepared.drain(..) {

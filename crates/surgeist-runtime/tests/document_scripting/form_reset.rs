@@ -639,7 +639,9 @@ fn hosted_form_reset_admission(styles_first: Option<bool>) {
         assert!(current.sheets().is_empty());
         for style in style_nodes {
             assert_eq!(initial.node(style).unwrap().parent(), Some(output));
-            assert_eq!(published.node(style).unwrap().parent(), None);
+            let detached = published.node(style).unwrap();
+            assert_eq!(detached.parent(), None);
+            assert!(detached.as_style().unwrap().sheet().unwrap().is_none());
             let old = initial
                 .node(style)
                 .unwrap()
@@ -708,6 +710,9 @@ pub(super) fn form_reset_removes_bound_stylesheet_with_controls() {
             &permit,
             r#"(() => {
         const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+        const retained = document.createElement('style');
+        retained.textContent = 'div { color: blue }';
+        document.head.appendChild(retained);
         const form = add(document.body, 'form');
         const input = add(form, 'input');
         input.defaultValue = 'default input';
@@ -735,20 +740,34 @@ pub(super) fn form_reset_removes_bound_stylesheet_with_controls() {
         "ok"
     );
     let sheets = styles.snapshot(root).unwrap().unwrap();
-    assert_eq!(sheets.sheets().len(), 1);
+    let [first, second] = sheets.sheets() else {
+        panic!("the original root must contain both sheets");
+    };
     let original = host.snapshot().unwrap();
     let style = original
         .nodes()
         .find(|&id| {
-            original
-                .node(id)
-                .unwrap()
-                .as_element()
-                .is_some_and(|element| {
-                    element.name().local_name().code_units() == [115, 116, 121, 108, 101]
-                })
+            let node = original.node(id).unwrap();
+            node.as_style().is_some()
+                && node
+                    .parent()
+                    .is_some_and(|parent| original.node(parent).unwrap().as_output().is_some())
         })
         .unwrap();
+    let removed = original
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    let retained = if first == removed.id() {
+        second
+    } else {
+        assert_eq!(second, removed.id());
+        first
+    };
     assert_eq!(
         observe(
             &mut host,
@@ -786,12 +805,17 @@ pub(super) fn form_reset_removes_bound_stylesheet_with_controls() {
         after.stamp().revision().get(),
         before.stamp().revision().get() + 2
     );
-    assert_eq!(after.node(style).unwrap().parent(), None);
+    let detached = after.node(style).unwrap();
+    assert_eq!(detached.parent(), None);
+    assert!(detached.as_style().unwrap().sheet().unwrap().is_none());
     assert!(original.node(style).unwrap().parent().is_some());
     let latest = styles.snapshot(root).unwrap().unwrap();
-    assert!(latest.sheets().is_empty());
+    assert_eq!(latest.sheets(), std::slice::from_ref(retained));
+    assert!(latest.sheet(retained).unwrap().inputs().owner.is_some());
+    assert!(latest.sheet(removed.id()).unwrap().inputs().owner.is_none());
     assert_eq!(latest.revision().value(), sheets.revision().value() + 1);
-    assert_eq!(sheets.sheets().len(), 1);
+    assert_eq!(sheets.sheets().len(), 2);
+    assert!(sheets.sheet(removed.id()).unwrap().inputs().owner.is_some());
 }
 
 pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {

@@ -438,9 +438,13 @@ impl Operation {
         (DomSourceCompletion, DomQueuedSourceHostedRemovals),
         super::form_stylesheets::DomFormResetPublicationError,
     > {
-        self.refresh_admission(cancel)?;
-        let input_bytes = self.input_bytes()?;
-        let checkpoint = self.draft.source_checkpoint(input_bytes, 0, cancel)?;
+        self.refresh_admission(cancel)
+            .map_err(DomHostedError::Dom)?;
+        let input_bytes = self.input_bytes().map_err(DomHostedError::Dom)?;
+        let checkpoint = self
+            .draft
+            .source_checkpoint(input_bytes, 0, cancel)
+            .map_err(DomHostedError::Dom)?;
         let result = self.with_form_stylesheets(dom, cancel, |op, dom| {
             op.join_form_removals(dom, source, request, cancel)
                 .map_err(Into::into)

@@ -3045,9 +3045,7 @@ pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequ
 pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest::operation(self) -> surgeist_dom::source::DomSourceOperationId
 pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest::sink(self) -> surgeist_dom::source::attribute::DomSourceAttributeSink
 pub enum surgeist_dom::source::DomFormResetPublicationError
-pub surgeist_dom::source::DomFormResetPublicationError::Cssom
-pub surgeist_dom::source::DomFormResetPublicationError::Cssom::error: surgeist_cssom::model::CssomError
-pub surgeist_dom::source::DomFormResetPublicationError::Cssom::root: surgeist_dom::identity::NodeId
+pub surgeist_dom::source::DomFormResetPublicationError::Cssom(surgeist_cssom::model::CssomError)
 pub surgeist_dom::source::DomFormResetPublicationError::Dom(surgeist_dom::DomError)
 pub surgeist_dom::source::DomFormResetPublicationError::Hosted(surgeist_dom::hosted::DomHostedError)
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::source::DomFormResetPublicationError

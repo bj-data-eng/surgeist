@@ -266,7 +266,7 @@ impl DomSourceRuntimeError {
             DomFormResetPublicationError::Hosted(error) => {
                 Self::Hosted(DomHostedRuntimeError::Dom(error))
             }
-            DomFormResetPublicationError::Cssom { error, .. } => {
+            DomFormResetPublicationError::Cssom(error) => {
                 Self::Style(DomStyleRuntimeError::Cssom(error))
             }
         }
