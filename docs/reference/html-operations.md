@@ -1776,6 +1776,9 @@ conditions do not activate a button, dispatch events or submit a form.
 per-element spellcheck default behaviors. The checked supplement joins one
 capture and host revision to its producer, configuration and revision; reports
 and admitted failures retain that qualification. Missing facts remain unavailable.
+Spellcheck indexing preserves the order of the supplied facts. The producer
+admits its backing against the fact-byte budget and charges each visited
+index position during formation and queries.
 An editing host differs from an editable descendant; isContentEditable is their
 union. HTML defines editing hosts, while editable follows the
 [selected delegated definition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).

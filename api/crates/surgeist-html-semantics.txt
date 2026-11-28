@@ -584,6 +584,9 @@ pub surgeist_html_semantics::HtmlGlobalInheritanceError::RecordCapacity
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::RecordCapacity::required: usize
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::RepresentationExhausted
+pub surgeist_html_semantics::HtmlGlobalInheritanceError::SpellcheckIndexBytes
+pub surgeist_html_semantics::HtmlGlobalInheritanceError::SpellcheckIndexBytes::limit: usize
+pub surgeist_html_semantics::HtmlGlobalInheritanceError::SpellcheckIndexBytes::required: usize
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork::required: usize
