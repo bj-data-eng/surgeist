@@ -108,6 +108,11 @@ pub enum Error {
     DomExceptionUnavailable,
     /// The backend could not complete and supplied no guest exception.
     BackendUnavailable,
+    /// A queued native occurrence requires the resumable checkpoint.
+    MicrotaskCheckpointRequired,
+    /// A Rust unwind interrupted the checkpoint before it could settle custody.
+    /// The owner refuses further guest execution.
+    MicrotaskCheckpointUnwound,
     /// Internal root-registry access overlapped. The owner fails closed after
     /// this defect rather than entering the SDK with inconsistent storage.
     RegistryConflict,
@@ -151,6 +156,10 @@ impl fmt::Display for Error {
             Self::Terminated => "JavaScript execution was terminated",
             Self::DomExceptionUnavailable => "DOMException is unavailable in this realm",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
+            Self::MicrotaskCheckpointRequired => {
+                "an explicit host microtask checkpoint is required"
+            }
+            Self::MicrotaskCheckpointUnwound => "the host microtask checkpoint unwound",
             Self::CallbackPanicked => "a native callback panicked",
             Self::RegistryConflict => "binding root-registry access overlapped",
             Self::Exception(_) => "JavaScript threw an exception",

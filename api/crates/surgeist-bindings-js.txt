@@ -743,6 +743,8 @@ pub surgeist_bindings_js::preparation::Request::CallableRegistration
 pub surgeist_bindings_js::preparation::Request::CallableRegistration::bytes: usize
 pub surgeist_bindings_js::preparation::Request::CallbackFrame
 pub surgeist_bindings_js::preparation::Request::CallbackFrame::bytes: usize
+pub surgeist_bindings_js::preparation::Request::HostMicrotask
+pub surgeist_bindings_js::preparation::Request::HostMicrotask::bytes: usize
 pub surgeist_bindings_js::preparation::Request::IncomingBuffer
 pub surgeist_bindings_js::preparation::Request::IncomingBuffer::bytes: usize
 pub surgeist_bindings_js::preparation::Request::IncomingRoot
@@ -844,6 +846,8 @@ pub surgeist_bindings_js::Error::ForeignOwner
 pub surgeist_bindings_js::Error::HostFailure(surgeist_bindings_js::HostFailure)
 pub surgeist_bindings_js::Error::IdentityExhausted
 pub surgeist_bindings_js::Error::IntegerOutOfRange
+pub surgeist_bindings_js::Error::MicrotaskCheckpointRequired
+pub surgeist_bindings_js::Error::MicrotaskCheckpointUnwound
 pub surgeist_bindings_js::Error::OwnerAlreadyActive
 pub surgeist_bindings_js::Error::PreparationAlreadyAdmitted
 pub surgeist_bindings_js::Error::PreparationCleanup(surgeist_bindings_js::preparation::CleanupFailure)
@@ -895,6 +899,9 @@ pub surgeist_bindings_js::Intrinsic::ArrayEntries
 pub surgeist_bindings_js::Intrinsic::ArrayForEach
 pub surgeist_bindings_js::Intrinsic::ArrayKeys
 pub surgeist_bindings_js::Intrinsic::ArrayValues
+pub enum surgeist_bindings_js::MicrotaskProgress
+pub surgeist_bindings_js::MicrotaskProgress::Complete
+pub surgeist_bindings_js::MicrotaskProgress::Suspended
 pub enum surgeist_bindings_js::NativeProjectionPrototype<'value, 'scope>
 pub surgeist_bindings_js::NativeProjectionPrototype::Creation(&'value surgeist_bindings_js::RetainedCallbackObject)
 pub surgeist_bindings_js::NativeProjectionPrototype::Current(surgeist_bindings_js::ObjectPrototype<'value, 'scope>)
@@ -1011,6 +1018,7 @@ pub fn surgeist_bindings_js::Exception::value(&self) -> &surgeist_bindings_js::R
 pub struct surgeist_bindings_js::Execution<'process>
 impl surgeist_bindings_js::Execution<'_>
 pub fn surgeist_bindings_js::Execution<'_>::checkpoint(&mut self) -> core::result::Result<(), surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Execution<'_>::checkpoint_microtasks(&mut self) -> core::result::Result<surgeist_bindings_js::MicrotaskProgress, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::create_realm(&mut self) -> core::result::Result<surgeist_bindings_js::Realm, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Execution<'_>::create_realm_funded<B: 'static, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, fund: impl core::ops::function::FnOnce(surgeist_bindings_js::preparation::Request) -> core::result::Result<B, E>) -> core::result::Result<surgeist_bindings_js::Realm, E>
 pub fn surgeist_bindings_js::Execution<'_>::finish_window_realm<T, E: core::convert::From<surgeist_bindings_js::Error>>(&mut self, pending: surgeist_bindings_js::PendingWindowRealm, install: impl for<'scope> core::ops::function::FnOnce(&mut surgeist_bindings_js::Scope<'scope>, &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(surgeist_bindings_js::Value<'scope>, T), E>) -> core::result::Result<(surgeist_bindings_js::Realm, T), E>
@@ -1123,6 +1131,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::define_property(&mut self, object: &
 pub fn surgeist_bindings_js::Scope<'scope>::dom_exception(&mut self, name: surgeist_bindings_js::dom_exception::DomExceptionName, message: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::dom_string(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<surgeist_bindings_js::preparation::Admitted<surgeist_bindings_js::DomString>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::double(&mut self, value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<f64, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::enqueue_host_microtask(&mut self, callback: impl for<'callback> core::ops::function::FnMut(&mut surgeist_bindings_js::Scope<'callback>) -> core::result::Result<surgeist_bindings_js::MicrotaskProgress, surgeist_bindings_js::Error> + 'static) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::enqueue_microtask(&mut self, function: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::evaluate(&mut self, source: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::fixed_arity_function(&mut self, callback: &surgeist_bindings_js::Callback, metadata: surgeist_bindings_js::FunctionMetadata<'_>) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>

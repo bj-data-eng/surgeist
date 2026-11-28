@@ -7,8 +7,8 @@ use crate::callback_object::CallbackObjectIdentity;
 use crate::conversion::ConversionAccount;
 use crate::{
     Callback, ConstructorCallback, EngineInstructionCount, Error, FunctionMetadata,
-    HeapObservation, Intrinsic, Primitive, PrototypeResolver, Realm, RealmKey, Root, ValueKind,
-    WellKnownSymbol,
+    HeapObservation, HostMicrotaskCallback, Intrinsic, MicrotaskProgress, Primitive,
+    PrototypeResolver, Realm, RealmKey, Root, ValueKind, WellKnownSymbol,
 };
 
 #[derive(Clone, Copy)]
@@ -107,6 +107,7 @@ pub(crate) trait Engine {
         action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
     ) -> Result<(), Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
+    fn checkpoint_microtasks(&mut self) -> Result<MicrotaskProgress, Error>;
     fn memory_pressure(&mut self);
     fn realm_storage_bytes(&self) -> usize;
     fn managed_object_storage_bytes(&self) -> usize;
@@ -186,6 +187,9 @@ pub(crate) trait Operations {
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
     fn enqueue_microtask(&mut self, function: &Root) -> Result<(), Error>;
+    fn host_microtask_storage_bytes(&self) -> usize;
+    fn enqueue_host_microtask(&mut self, callback: Box<HostMicrotaskCallback>)
+    -> Result<(), Error>;
     fn validate_string_length(&self, units: usize) -> Result<(), Error>;
     fn root_storage_bytes(&self) -> usize;
     fn string_funded(

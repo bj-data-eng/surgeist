@@ -275,6 +275,18 @@ pub struct Execution<'process> {
     engine: &'process mut dyn backend::Engine,
 }
 
+/// Progress of a native microtask or the checkpoint driving it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MicrotaskProgress {
+    /// The current occurrence or checkpoint finished.
+    Complete,
+    /// The original occurrence remains at the head of the microtask queue.
+    Suspended,
+}
+
+type HostMicrotaskCallback =
+    dyn for<'scope> FnMut(&mut Scope<'scope>) -> Result<MicrotaskProgress, Error>;
+
 /// A Window-shaped realm during host installation. Only a completed
 /// installation yields the ordinary execution capability for this realm.
 pub struct PendingWindowRealm(Realm);
@@ -411,12 +423,36 @@ impl Execution<'_> {
         boundary.finish(chosen)
     }
 
-    /// Runs this heap's shared explicit microtask checkpoint. Evaluating a
-    /// script does not implicitly run jobs. Jobs can reference several realms;
-    /// dropping a realm token does not cancel them. This SDK checkpoint does
-    /// not surface rejected promises; host rejection reporting is separate.
+    /// Run the heap's full job checkpoint.
+    ///
+    /// A queued native occurrence requires `checkpoint_microtasks` first.
+    /// Jobs can reference several realms and keep their own realm custody.
     pub fn checkpoint(&mut self) -> Result<(), Error> {
         self.engine.checkpoint()
+    }
+
+    /// Run the shared Promise and host microtask queue to completion or suspension.
+    ///
+    /// On suspension the next call resumes the original host occurrence ahead
+    /// of the later queue. Other engine jobs stay queued for a full checkpoint.
+    /// A Rust cleanup unwind propagates and leaves the execution owner terminal.
+    pub fn checkpoint_microtasks(&mut self) -> Result<MicrotaskProgress, Error> {
+        let owner = self.engine.owner_state();
+        let boundary = owner::Boundary::enter(owner.clone())?;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let result = self.engine.checkpoint_microtasks();
+            self.engine.reap();
+            boundary.finish(result)
+        }));
+        match outcome {
+            Ok(result) => result,
+            Err(payload) => {
+                if owner.available().is_ok() {
+                    owner.fail(Error::MicrotaskCheckpointUnwound);
+                }
+                std::panic::resume_unwind(payload)
+            }
+        }
     }
 
     /// Samples the thread-local collector without running a collection.
@@ -1216,6 +1252,40 @@ impl<'scope> Scope<'scope> {
     /// the owning heap and is returned by the checkpoint.
     pub fn enqueue_microtask(&mut self, function: &Value<'scope>) -> Result<(), Error> {
         self.operations.enqueue_microtask(&function.root)
+    }
+
+    /// Append an owned native occurrence to the current realm's microtask queue.
+    ///
+    /// A suspended callback retains its captures and queue position. The host
+    /// resumes it through `Execution::checkpoint_microtasks`. An error from
+    /// the body terminates the execution owner with the original error. Code
+    /// that can enqueue these callbacks must run in a microtask-only turn
+    /// or outside any checkpoint.
+    pub fn enqueue_host_microtask(
+        &mut self,
+        mut callback: impl for<'callback> FnMut(
+            &mut Scope<'callback>,
+        ) -> Result<MicrotaskProgress, Error>
+        + 'static,
+    ) -> Result<(), Error> {
+        self.operations.check_active()?;
+        let owner = self.operations.owner_state();
+        let bytes = self
+            .operations
+            .host_microtask_storage_bytes()
+            .checked_add(size_of_val(&callback))
+            .and_then(|bytes| bytes.checked_add(size_of::<Option<preparation::Guard>>()))
+            .ok_or(Error::Allocation)?;
+        let backing = owner
+            .preparation
+            .get()
+            .map(|account| account.admit(preparation::Request::HostMicrotask { bytes }))
+            .transpose()?;
+        self.operations
+            .enqueue_host_microtask(Box::new(move |scope| {
+                let _backing = &backing;
+                callback(scope)
+            }))
     }
 
     /// Creates a callable with declared name and length. The native handler

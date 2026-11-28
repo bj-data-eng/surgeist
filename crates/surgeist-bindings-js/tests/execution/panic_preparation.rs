@@ -360,11 +360,125 @@ fn later_panic_preserves_the_original_host_failure() -> Result<(), Error> {
     Ok(())
 }
 
+pub(super) fn host_microtask_panic_payload_waits_for_retirement() -> Result<(), Error> {
+    let mut process = Process::bootstrap()?;
+    let realm = process.execution().create_realm()?;
+    let dropped = Arc::new(Mutex::new(Vec::new()));
+    let observed = dropped.clone();
+    process.execution().in_realm(&realm, |scope| {
+        scope.enqueue_host_microtask(move |_| {
+            std::panic::panic_any(Payload {
+                id: 9,
+                dropped: observed.clone(),
+                panic_on_drop: true,
+            })
+        })
+    })?;
+    assert!(matches!(
+        process.execution().checkpoint_microtasks(),
+        Err(Error::CallbackPanicked)
+    ));
+    assert!(dropped.lock().unwrap().is_empty());
+    assert!(matches!(
+        process.execution().in_realm(&realm, |_| Ok(())),
+        Err(Error::CallbackPanicked)
+    ));
+    let retired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(process)));
+    assert!(retired.is_err());
+    assert_eq!(*dropped.lock().unwrap(), [9]);
+    Ok(())
+}
+
+enum HostCleanup {
+    Release,
+    Unwind(&'static str),
+    Refuse,
+}
+
+impl Retention for HostCleanup {
+    fn release(self: Box<Self>) -> Result<(), Error> {
+        match *self {
+            Self::Release => Ok(()),
+            Self::Unwind(message) => std::panic::panic_any(message),
+            Self::Refuse => Err(Error::IdentityExhausted),
+        }
+    }
+}
+
+pub(super) fn host_microtask_cleanup_unwind_refuses_further_dispatch() -> Result<(), Error> {
+    use surgeist_bindings_js::MicrotaskProgress;
+
+    for progress in [MicrotaskProgress::Complete, MicrotaskProgress::Suspended] {
+        let mut process = Process::bootstrap()?;
+        let realm = process.execution().create_realm()?;
+        let unwind = Cell::new(true);
+        let account = Admission::new(
+            move |request| {
+                Ok(match request {
+                    Request::CallbackFrame { .. } if unwind.replace(false) => {
+                        HostCleanup::Unwind("returned host microtask frame release")
+                    }
+                    Request::HostMicrotask { .. } if progress == MicrotaskProgress::Suspended => {
+                        HostCleanup::Refuse
+                    }
+                    _ => HostCleanup::Release,
+                })
+            },
+            |_| Ok(()),
+        )
+        .install(&mut process, ())?;
+        process.enable_instruction_counting()?;
+        let native_runs = Rc::new(Cell::new(0));
+        let runs = native_runs.clone();
+        process.execution().in_realm(&realm, |scope| {
+            scope.enqueue_host_microtask(move |_| {
+                runs.set(runs.get() + 1);
+                Ok(progress)
+            })?;
+            scope.evaluate(&units(
+                "Promise.resolve().then(() => globalThis.suffixEntered = true)",
+            ))?;
+            Ok(())
+        })?;
+        let before = process.instruction_count();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            process.execution().checkpoint_microtasks()
+        }));
+        let payload = result.expect_err("Rust frame cleanup must unwind normally");
+        assert_eq!(
+            payload.downcast_ref::<&str>().copied(),
+            Some("returned host microtask frame release")
+        );
+        assert!(matches!(
+            process.execution().checkpoint_microtasks(),
+            Err(Error::MicrotaskCheckpointUnwound)
+        ));
+        assert!(matches!(
+            process.execution().checkpoint(),
+            Err(Error::MicrotaskCheckpointUnwound)
+        ));
+        assert_eq!(process.instruction_count(), before, "the guest suffix ran");
+        assert_eq!(native_runs.get(), 1);
+        let observation = account.observation();
+        assert!(observation.cleanup_error().is_none());
+        drop(process);
+        if progress == MicrotaskProgress::Suspended {
+            assert!(matches!(
+                observation.cleanup_error(),
+                Some(Error::IdentityExhausted)
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn panic_preparation_contracts() -> Result<(), Error> {
     exact_frame_budget_admits_and_one_short_refuses_before_handler()?;
     completed_frames_wait_until_the_owned_boundary()?;
     nested_handler_panics_keep_both_payloads_until_teardown(false)?;
     nested_handler_panics_keep_both_payloads_until_teardown(true)?;
     admission_panic_uses_emergency_and_outer_frame_keeps_its_own_payload()?;
-    later_panic_preserves_the_original_host_failure()
+    later_panic_preserves_the_original_host_failure()?;
+    host_microtask_panic_payload_waits_for_retirement()?;
+    host_microtask_cleanup_unwind_refuses_further_dispatch()
 }

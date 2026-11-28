@@ -312,7 +312,7 @@ fn admit_boa_callback(
         .transpose()
 }
 
-fn boa_host_abort() -> BoaJsError {
+pub(super) fn boa_host_abort() -> BoaJsError {
     // This uncatchable marker only stops Boa. OwnerState retains the cause.
     BoaPanicError::new("").into()
 }
@@ -324,6 +324,74 @@ fn invoke_boa_callable(
     context: &mut CallbackContext,
 ) -> BoaJsResult<BoaJsValue> {
     let state = token.state.upgrade().ok_or_else(boa_host_abort)?;
+    with_boa_callback_frame(
+        &state,
+        || run_boa_callable(&state, token, receiver_or_target, args, context),
+        |error| match error {
+            crate::Error::Exception(exception) => match state.value(exception.value()) {
+                Ok(value) => BoaJsError::from_opaque(value),
+                Err(error) => {
+                    state.owner.fail(error);
+                    boa_host_abort()
+                }
+            },
+            error => {
+                state.owner.fail(error);
+                boa_host_abort()
+            }
+        },
+    )
+}
+
+pub(super) fn invoke_boa_host_microtask(
+    state: &CallbackRc<State>,
+    realm: crate::RealmKey,
+    callback: &mut Option<Box<crate::HostMicrotaskCallback>>,
+    context: &mut CallbackContext,
+) -> BoaJsResult<crate::MicrotaskProgress> {
+    let boundary =
+        crate::owner::Boundary::enter(state.owner.clone()).map_err(|_| boa_host_abort())?;
+    let progress = with_boa_callback_frame(
+        state,
+        || {
+            if &state.lookup_realm(realm)? != context.realm() {
+                return Err(crate::Error::ForeignOwner);
+            }
+            let mut entered = Entered {
+                context,
+                state: state.clone(),
+                realm,
+            };
+            let callback = callback.as_mut().ok_or(crate::Error::RegistryConflict)?;
+            let progress = callback(&mut crate::Scope {
+                operations: &mut entered,
+                invariant: CallbackMarker,
+            })?;
+            state.owner.available()?;
+            Ok(progress)
+        },
+        |error| {
+            state.owner.fail(error);
+            boa_host_abort()
+        },
+    )?;
+    // Retire all local backing, including the returned callback frame, before
+    // giving the engine permission to enter the untouched queue suffix.
+    if progress == crate::MicrotaskProgress::Complete {
+        drop(callback.take());
+    }
+    state.reap();
+    boundary.finish(Ok(progress)).map_err(|error| {
+        state.owner.fail(error);
+        boa_host_abort()
+    })
+}
+
+fn with_boa_callback_frame<T>(
+    state: &State,
+    invoke: impl FnOnce() -> Result<T, crate::Error>,
+    on_error: impl FnOnce(crate::Error) -> BoaJsError,
+) -> BoaJsResult<T> {
     state.owner.available().map_err(|_| boa_host_abort())?;
     let Some(mut frame) = state.callables.emergency.take() else {
         state.owner.fail(crate::Error::RegistryConflict);
@@ -332,37 +400,25 @@ fn invoke_boa_callable(
     let mut admitted = false;
     let result = catch_callback_unwind(CallbackUnwind(|| {
         let backing = admit_boa_callback(
-            &state,
+            state,
             CallbackRequest::CallbackFrame {
                 bytes: size_of::<BoaCallbackFrame>(),
             },
         );
-        let result = backing.and_then(|backing| {
-            state.callables.emergency.set(Some(std::mem::replace(
-                &mut frame,
-                Box::new(BoaCallbackFrame {
-                    next: None,
-                    payload: None,
-                    _backing: backing,
-                }),
-            )));
-            admitted = true;
-            run_boa_callable(&state, token, receiver_or_target, args, context)
-        });
-        match result {
-            Ok(value) => Ok(value),
-            Err(crate::Error::Exception(exception)) => match state.value(exception.value()) {
-                Ok(value) => Err(BoaJsError::from_opaque(value)),
-                Err(error) => {
-                    state.owner.fail(error);
-                    Err(boa_host_abort())
-                }
-            },
-            Err(error) => {
-                state.owner.fail(error);
-                Err(boa_host_abort())
-            }
-        }
+        backing
+            .and_then(|backing| {
+                state.callables.emergency.set(Some(std::mem::replace(
+                    &mut frame,
+                    Box::new(BoaCallbackFrame {
+                        next: None,
+                        payload: None,
+                        _backing: backing,
+                    }),
+                )));
+                admitted = true;
+                invoke()
+            })
+            .map_err(on_error)
     }));
     match result {
         Ok(result) => {
