@@ -6,9 +6,88 @@ use surgeist_html::{
     elements::input::{
         HtmlInputEmailMode, HtmlInputSanitization, HtmlInputSanitizationCursor,
         HtmlInputTypeChange, HtmlInputTypeEffect, HtmlInputValueMode,
+        input_email_type_mismatch_with,
     },
 };
 use surgeist_ledger::Change;
+
+#[test]
+fn email_type_mismatch_uses_exact_address_and_list_grammar() {
+    use HtmlInputEmailMode::{Multiple, Single};
+    let mismatch = |value: &str, mode| {
+        input_email_type_mismatch_with(&value.encode_utf16().collect::<Vec<_>>(), mode, || {
+            Ok::<_, ()>(())
+        })
+        .unwrap()
+    };
+    for (value, expected) in [
+        ("", false),
+        (".a..@7", false),
+        ("a+.!#$%&'*/=?^_\x60{|}~-@b-c.7", false),
+        ("a@xn--bcher-kva.de", false),
+        ("a@bücher.de", true),
+        ("@b", true),
+        ("a@", true),
+        ("a@@b", true),
+        ("a@-b", true),
+        ("a@b-", true),
+        ("a@b..c", true),
+        ("a@b.", true),
+        ("a b@c", true),
+        (" a@b", true),
+        ("a@b\n", true),
+        ("\"a\"@b", true),
+    ] {
+        assert_eq!(mismatch(value, Single), expected, "{value:?}");
+    }
+    for (value, expected) in [
+        ("", false),
+        ("a@b", false),
+        ("a@b,a@b", false),
+        (" a@b ,\tc@d ", false),
+        ("a@b,c@d,", true),
+        ("a@b,,c@d", true),
+        (",a@b", true),
+        ("a@b, ", true),
+        ("a@b c@d", true),
+        ("a\r@b,c@d", true),
+    ] {
+        assert_eq!(mismatch(value, Multiple), expected, "{value:?}");
+    }
+    assert!(mismatch("a@b,c@d", Single));
+    assert!(!mismatch(&format!("a@{}.b", "x".repeat(63)), Single));
+    assert!(mismatch(&format!("a@{}.b", "x".repeat(64)), Single));
+    assert!(
+        input_email_type_mismatch_with(&[0xd800, 0x40, 0x62], Single, || Ok::<_, ()>(())).unwrap()
+    );
+}
+
+#[test]
+fn email_type_mismatch_preserves_refusal_and_stops_at_decisive_input() {
+    let value = [0x61, 0x40, 0x62, 0x2c, 0x63, 0x40, 0x64];
+    let mut admitted = 0;
+    assert_eq!(
+        input_email_type_mismatch_with(&value, HtmlInputEmailMode::Multiple, || {
+            if admitted == 4 {
+                return Err("refused current input unit");
+            }
+            admitted += 1;
+            Ok(())
+        }),
+        Err("refused current input unit")
+    );
+    assert_eq!(admitted, 4);
+    let mut read = 0;
+    assert_eq!(
+        input_email_type_mismatch_with(&value, HtmlInputEmailMode::Single, || {
+            read += 1;
+            assert!(read <= 4, "the comma already proves a mismatch");
+            Ok::<_, ()>(())
+        }),
+        Ok(true)
+    );
+    assert_eq!(read, 4);
+}
 
 fn sanitize(
     policy: HtmlInputSanitization,

@@ -4992,6 +4992,7 @@ pub const fn surgeist_html::elements::input::HtmlRangeTextPlan::selection(&self)
 pub const surgeist_html::elements::input::HTML_INPUT_FILENAME_PREFIX: &[u16]
 pub const fn surgeist_html::elements::input::input_color_standard_failure_fallback() -> surgeist_html::microsyntax::color::HtmlLegacyColor
 pub const fn surgeist_html::elements::input::input_color_value_source(dirty_value: bool) -> surgeist_html::elements::input::HtmlInputColorValueSource
+pub fn surgeist_html::elements::input::input_email_type_mismatch_with<E>(value: &[u16], mode: surgeist_html::elements::input::HtmlInputEmailMode, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub fn surgeist_html::elements::input::input_filename_setter(value: &[u16]) -> core::result::Result<(), surgeist_html::elements::input::HtmlInputFilenameInvalidState>
 pub fn surgeist_html::elements::input::input_value_setter_finish(kind: surgeist_html::attributes::HtmlInputType, comparison: surgeist_html::elements::input::HtmlInputValueComparison, post_clamp: surgeist_html::elements::input::HtmlInputSelection) -> surgeist_html::elements::form::HtmlTextControlValueSetterFinish
 pub mod surgeist_html::elements::link

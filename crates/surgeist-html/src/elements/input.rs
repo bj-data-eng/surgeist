@@ -16,6 +16,7 @@ pub use crate::internal::elements::input::{
 pub use crate::internal::elements::input_color::{
     HtmlInputColorValueSource, input_color_standard_failure_fallback, input_color_value_source,
 };
+pub use crate::internal::elements::input_email::input_email_type_mismatch_with;
 pub use crate::internal::elements::input_image::{
     HtmlInputImageHistory, HtmlInputImageUpdateGuard, HtmlInputImagesDisabled,
 };

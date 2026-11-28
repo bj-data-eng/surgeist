@@ -1769,6 +1769,13 @@ on Button, Fieldset, Input, Output, Select and Textarea. A barred control still
 has this flag. The capture carries the Boolean without copying the message.
 An applicable control without a qualified observation reports missing evidence.
 
+`InputEmailTypeMismatch` evaluates the same capture's exact current Email
+value, using the single-address or list grammar selected by `multiple`.
+The empty current value has no mismatch. A comma in a nonempty list requires
+another valid address, including when it is the last unit in the stored value.
+The grammar admits each inspected UTF-16 unit. Missing current values stay
+missing, and Email UI bad-input observations have a separate boundary.
+
 The form-default-button query selects the first owned submit button in ordinary
 tree order across the whole tree, including controls outside the form subtree.
 A disabled first button remains the default. The implicit-submission-condition

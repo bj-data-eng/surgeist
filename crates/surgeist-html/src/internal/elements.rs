@@ -16,6 +16,7 @@ pub(crate) mod iframe;
 pub(crate) mod image;
 pub(crate) mod input;
 pub(crate) mod input_color;
+pub(crate) mod input_email;
 pub(crate) mod input_image;
 pub(crate) mod input_range;
 pub(crate) mod input_selection;

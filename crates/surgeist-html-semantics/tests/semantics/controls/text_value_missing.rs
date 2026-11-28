@@ -104,7 +104,9 @@ fn report(
 }
 fn value(r: &HtmlSemanticReport) -> &HtmlSemanticValue<bool> {
     match r.results()[0].fact() {
-        HtmlSemanticFact::InputTextValueMissing(v) | HtmlSemanticFact::TextareaValueMissing(v) => v,
+        HtmlSemanticFact::InputTextValueMissing(v)
+        | HtmlSemanticFact::TextareaValueMissing(v)
+        | HtmlSemanticFact::InputEmailTypeMismatch(v) => v,
         other => panic!("{other:?}"),
     }
 }
@@ -114,6 +116,99 @@ fn query_for(local: &str) -> HtmlSemanticQuery {
         "textarea" => HtmlSemanticQuery::TextareaValueMissing,
         _ => panic!("unsupported fixture role"),
     }
+}
+
+#[test]
+fn captured_email_mismatch_distinguishes_current_input_scope_and_missing_evidence() {
+    let q = HtmlSemanticQuery::InputEmailTypeMismatch;
+    let (email, id) = fixture(
+        "input",
+        &[
+            ("type", "eMaIl"),
+            ("required", ""),
+            ("value", "a@b"),
+            ("disabled", ""),
+        ],
+        true,
+    );
+    let missing = context(&email, &[(id.clone(), None)]);
+    assert_eq!(
+        value(&report(&email, &missing, &id, q, 100)),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::CurrentValue(id.clone()))
+    );
+    for (text, expected) in [("", false), ("bad address", true), ("a@b,c@d", true)] {
+        let cx = context(&email, &[(id.clone(), Some(text.into()))]);
+        assert_eq!(
+            value(&report(&email, &cx, &id, q, 100)),
+            &HtmlSemanticValue::Known(expected)
+        );
+    }
+    let (text, id) = fixture("input", &[("type", "text")], true);
+    let cx = context(&text, &[]);
+    assert_eq!(
+        value(&report(&text, &cx, &id, q, 100)),
+        &HtmlSemanticValue::Inapplicable
+    );
+
+    let (mut b, document) = builder();
+    let foreign = expanded(
+        &mut b,
+        &document,
+        Namespace::from_uri("urn:foreign"),
+        "input",
+        OrderedAttributes::default(),
+    );
+    let captured = b.finish().unwrap();
+    let cx = context(&captured, &[]);
+    let subject = captured.subject_id(&foreign).unwrap();
+    assert_eq!(
+        value(&report(&captured, &cx, &subject, q, 100)),
+        &HtmlSemanticValue::Unsupported(HtmlSemanticUnsupported::ForeignNamespace)
+    );
+    let document = captured.subject_id(&document).unwrap();
+    assert_eq!(
+        value(&report(&captured, &cx, &document, q, 100)),
+        &HtmlSemanticValue::Inapplicable
+    );
+}
+
+#[test]
+fn captured_email_mismatch_charges_each_current_unit_to_the_original_query() {
+    let (captured, subject) = fixture("input", &[("type", "email")], true);
+    let query = HtmlSemanticQuery::InputEmailTypeMismatch;
+    let empty = context(&captured, &[(subject.clone(), Some("".into()))]);
+    let empty_work = report(&captured, &empty, &subject, query, 100)
+        .usage()
+        .work();
+
+    let text = "abcdef@host.test";
+    let current = context(&captured, &[(subject.clone(), Some(text.into()))]);
+    let complete = report(&captured, &current, &subject, query, 100);
+    assert_eq!(value(&complete), &HtmlSemanticValue::Known(false));
+    assert_eq!(
+        complete.usage().work(),
+        empty_work + text.encode_utf16().count()
+    );
+
+    let limit = empty_work + 3;
+    let mut partial = session(
+        &captured,
+        &current,
+        limits(limit),
+        100,
+        HtmlSemanticCancellation::new(),
+    );
+    let refusal = partial.query(&[request(&subject, query)]).unwrap_err();
+    assert_eq!(
+        refusal.kind(),
+        &HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::Work,
+            limit,
+            required: limit + 1,
+        },
+    );
+    assert_eq!(refusal.usage().work(), limit);
+    assert_eq!(partial.query(&[]).unwrap_err(), refusal);
 }
 
 #[test]
