@@ -833,6 +833,26 @@ impl core::fmt::Debug for surgeist_dom::file::DomFileList
 pub fn surgeist_dom::file::DomFileList::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_dom::file::DomFileListId(_)
 pub mod surgeist_dom::focus
+pub enum surgeist_dom::focus::DomFocusChainEntry
+pub surgeist_dom::focus::DomFocusChainEntry::Document(surgeist_dom::identity::DocumentId)
+pub surgeist_dom::focus::DomFocusChainEntry::NavigableContainer(surgeist_dom::identity::NodeId)
+pub enum surgeist_dom::focus::DomFocusChainError
+pub surgeist_dom::focus::DomFocusChainError::Dom(surgeist_dom::DomError)
+pub surgeist_dom::focus::DomFocusChainError::EntryLimit
+pub surgeist_dom::focus::DomFocusChainError::EntryLimit::limit: usize
+pub surgeist_dom::focus::DomFocusChainError::Hosted(surgeist_dom::hosted::DomHostedError)
+pub surgeist_dom::focus::DomFocusChainError::RepeatedEntry(surgeist_dom::focus::DomFocusChainEntry)
+pub surgeist_dom::focus::DomFocusChainError::UnavailableRole
+pub surgeist_dom::focus::DomFocusChainError::WorkLimit
+pub surgeist_dom::focus::DomFocusChainError::WorkLimit::limit: u64
+impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::from(error: surgeist_dom::DomError) -> Self
+impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
+impl core::error::Error for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::focus::DomFocusObservation
 pub surgeist_dom::focus::DomFocusObservation::Denied
 pub surgeist_dom::focus::DomFocusObservation::KnownNone
@@ -864,6 +884,13 @@ impl<'a> surgeist_dom::focus::DomDocumentAutofocus<'a>
 pub fn surgeist_dom::focus::DomDocumentAutofocus<'a>::candidates(self) -> &'a [surgeist_dom::identity::NodeId]
 pub fn surgeist_dom::focus::DomDocumentAutofocus<'a>::processed(self) -> bool
 pub fn surgeist_dom::focus::DomDocumentAutofocus<'a>::stamp(self) -> surgeist_dom::identity::DomDocumentStamp
+pub struct surgeist_dom::focus::DomFocusChain
+impl surgeist_dom::focus::DomFocusChain
+pub fn surgeist_dom::focus::DomFocusChain::entries(&self) -> &[surgeist_dom::focus::DomFocusChainEntry]
+pub fn surgeist_dom::focus::DomFocusChain::stamp(&self) -> surgeist_dom::identity::DomStamp
+pub struct surgeist_dom::focus::DomFocusChainLimits
+impl surgeist_dom::focus::DomFocusChainLimits
+pub const fn surgeist_dom::focus::DomFocusChainLimits::new(entries: usize, work: u64) -> Self
 pub struct surgeist_dom::focus::DomFocusPreparation
 impl surgeist_dom::focus::DomFocusPreparation
 pub fn surgeist_dom::focus::DomFocusPreparation::publish(self, observation: surgeist_dom::focus::DomFocusObservation) -> core::result::Result<surgeist_dom::focus::DomFocusPublication, surgeist_dom::DomError>
@@ -1398,6 +1425,8 @@ pub surgeist_dom::hosted::DomHostedError::WorkLimit::limit: u64
 pub surgeist_dom::hosted::DomHostedError::WrongPhase
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::hosted::DomHostedError
 pub fn surgeist_dom::hosted::DomHostedError::from(error: surgeist_dom::DomError) -> Self
+impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
 impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::hosted::sheet::DomHostedSheetConstructionError
 pub fn surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
 impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::source::DomFormResetPublicationError
@@ -3870,6 +3899,8 @@ impl surgeist_dom::tree::DomDocument<'_>
 pub fn surgeist_dom::tree::DomDocument<'_>::associated_inert_template_document(self) -> core::option::Option<surgeist_dom::identity::DocumentId>
 pub fn surgeist_dom::tree::DomDocument<'_>::template_role(self) -> surgeist_dom::shadow::DomTemplateDocumentRole
 impl surgeist_dom::tree::DomDocument<'_>
+pub fn surgeist_dom::tree::DomDocument<'_>::focus_chain(self, limits: surgeist_dom::focus::DomFocusChainLimits, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::focus::DomFocusChain, surgeist_dom::focus::DomFocusChainError>
+impl surgeist_dom::tree::DomDocument<'_>
 pub fn surgeist_dom::tree::DomDocument<'_>::fullscreen(self) -> core::result::Result<bool, surgeist_dom::DomError>
 pub fn surgeist_dom::tree::DomDocument<'_>::fullscreen_element(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
 pub fn surgeist_dom::tree::DomDocument<'_>::fullscreen_model_element(self) -> core::result::Result<core::option::Option<surgeist_dom::identity::NodeId>, surgeist_dom::DomError>
@@ -4704,6 +4735,8 @@ pub surgeist_dom::DomError::WrongDocument
 pub surgeist_dom::DomError::WrongNodeKind
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::capture::DomHtmlCaptureError
 pub fn surgeist_dom::capture::DomHtmlCaptureError::from(value: surgeist_dom::DomError) -> Self
+impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::focus::DomFocusChainError
+pub fn surgeist_dom::focus::DomFocusChainError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::hosted::DomHostedError
 pub fn surgeist_dom::hosted::DomHostedError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::hosted::sheet::DomHostedSheetConstructionError

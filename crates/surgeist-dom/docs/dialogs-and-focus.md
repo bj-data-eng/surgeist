@@ -96,6 +96,17 @@ or focus chain, describe system focus, change Window state or authorize focus
 effects. No designation setter is exposed. Direct Document cloning, import and
 adoption remain unsupported.
 
+## Captured Document focus chains
+
+`DomDocument::focus_chain()` resolves the HTML chain from a complete immutable
+snapshot. A Document contributes its identity without anchor projection. An
+actual child navigable contributes its exact container and continues through
+that container's node Document, including containers inside shadow roots.
+Established top-level association or qualified absence ends the chain.
+Incomplete, retiring or inconsistent relationships refuse the read. The result
+carries the snapshot's DOM stamp, so later focus processing must obtain a
+current Source basis. Entry and work limits cover the whole query.
+
 ## Entry scope and remembered focus
 
 Each Source operation retains its actual entry scope outside the mutable Draft.

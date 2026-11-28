@@ -7,6 +7,8 @@
 //! `DomDocumentAutofocus` and `DomFocusedAreaDesignation` hold retained history; neither
 //! resolves the currently focused area. The `DomSource*Focus*` and autofocus request
 //! types are the Source continuation for operations that reach focusing.
+//! `DomFocusChain` records the ordered Document and navigable-container roles at one
+//! immutable canonical snapshot.
 //!
 //! `docs/dialogs-and-focus.md` owns the contract.
 
@@ -16,4 +18,7 @@ pub use crate::internal::source::{
     DomFocusObservation, DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomFocusTarget,
     DomSourceAutofocusInsertionRequest, DomSourceDialogFocusingRequest,
     DomSourceFocusDelegateRequest, DomSourceFocusDelegateStep,
+};
+pub use crate::internal::store::focus::chain::{
+    DomFocusChain, DomFocusChainEntry, DomFocusChainError, DomFocusChainLimits,
 };

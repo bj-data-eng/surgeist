@@ -1,4 +1,6 @@
 //! Canonical Document permission, top-Document and intrinsic focus observations.
+pub(crate) mod chain;
+
 use super::*;
 use crate::internal::source::FocusQualification;
 

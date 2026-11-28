@@ -11,6 +11,7 @@ struct Fixture {
     top: DomHostedCreation,
     root: NodeId,
     nested: DomHostedCreation,
+    nested_container: NodeId,
     light: DomHostedCreation,
     first: DomHostedCreation,
     first_operation: DomHostedOperationId,
@@ -231,6 +232,7 @@ fn build_fixture(unrelated: usize, populated: bool, document_tree: bool) -> Fixt
         top,
         root,
         nested: other_parent,
+        nested_container,
         light,
         first,
         first_operation,
@@ -687,7 +689,110 @@ fn document_tree_children_use_ordinary_container_order_and_the_selected_document
 }
 
 #[test]
+fn document_focus_chain_follows_exact_nested_and_shadow_container_roles() {
+    use crate::focus::{DomFocusChainEntry::*, DomFocusChainError, DomFocusChainLimits};
+
+    let mut f = build_fixture(8, true, true);
+    let mut edit = DomBatch::new();
+    let closed = edit.create_document();
+    let commit = f.inner.dom.apply(edit, &cancel()).unwrap();
+    let closed = commit.document(&closed).unwrap();
+    let snapshot = f.inner.dom.snapshot();
+    let limits = DomFocusChainLimits::new(8, 1_000);
+    let read = |id| {
+        snapshot
+            .document(id)
+            .unwrap()
+            .focus_chain(limits, &cancel())
+            .unwrap()
+    };
+    let nested = read(f.nested.document);
+    assert_eq!(nested.stamp(), snapshot.stamp());
+    assert_eq!(
+        nested.entries(),
+        &[
+            Document(f.nested.document),
+            NavigableContainer(f.nested_container),
+            Document(f.first.document),
+            NavigableContainer(f.containers[0]),
+            Document(f.top.document),
+        ]
+    );
+    assert_eq!(
+        read(f.expected[1].document).entries(),
+        &[
+            Document(f.expected[1].document),
+            NavigableContainer(f.containers[1]),
+            Document(f.top.document),
+        ]
+    );
+    assert_eq!(read(f.top.document).entries(), &[Document(f.top.document)]);
+    assert_eq!(read(closed).entries(), &[Document(closed)]);
+    let document = snapshot.document(f.nested.document).unwrap();
+    assert!(matches!(
+        document.focus_chain(DomFocusChainLimits::new(4, 1_000), &cancel()),
+        Err(DomFocusChainError::EntryLimit { limit: 4 })
+    ));
+    assert!(matches!(
+        document.focus_chain(DomFocusChainLimits::new(8, 10), &cancel()),
+        Err(DomFocusChainError::WorkLimit { limit: 10 })
+    ));
+    assert!(matches!(
+        document.focus_chain(limits, &AtomicBool::new(true)),
+        Err(DomFocusChainError::Dom(DomError::Cancelled))
+    ));
+    assert_eq!(f.inner.dom.snapshot().stamp(), snapshot.stamp());
+}
+
+#[test]
+fn document_focus_chain_refuses_two_active_navigables_for_one_document() {
+    use crate::focus::{DomFocusChainError, DomFocusChainLimits};
+
+    let mut f = build_fixture(0, true, true);
+    let (duplicate, _, work) = f.inner.issue(0);
+    assert_eq!(duplicate.document, f.top.document);
+    assert_ne!(duplicate.navigable, f.top.navigable);
+    let cancel = cancel();
+    let mut draft = Draft::new(&f.inner.dom, DomBatch::new().owner, &cancel).unwrap();
+    let graph = history::Graph::initial(
+        draft.hosted_history.as_deref(),
+        f.inner.input(duplicate, None),
+        &history::Context::new(&f.inner.source, &work, &cancel, 0),
+    )
+    .unwrap();
+    draft
+        .set_hosted_history(Some(graph), None, &cancel)
+        .unwrap();
+    let prepared = draft.finish(&f.inner.dom, &cancel).unwrap();
+    f.inner.dom.publish(prepared, &cancel).unwrap();
+    let capture = f.inner.dom.snapshot();
+    assert_eq!(
+        capture
+            .hosted_navigable(f.top.navigable)
+            .unwrap()
+            .active_document(),
+        Some(f.top.document)
+    );
+    assert_eq!(
+        capture
+            .hosted_navigable(duplicate.navigable)
+            .unwrap()
+            .active_document(),
+        Some(f.top.document)
+    );
+    assert!(matches!(
+        capture
+            .document(f.top.document)
+            .unwrap()
+            .focus_chain(DomFocusChainLimits::new(8, 1_000), &cancel),
+        Err(DomFocusChainError::Hosted(DomHostedError::StaleBasis))
+    ));
+}
+
+#[test]
 fn document_tree_children_follow_current_publication_reorder_and_retirement() {
+    use crate::focus::{DomFocusChainEntry::*, DomFocusChainError, DomFocusChainLimits};
+
     let mut f = build_fixture(0, false, true);
     assert!(current_children(&f.inner.dom, f.top.document).is_empty());
 
@@ -758,6 +863,22 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
     let graph = retiring
         .unlink_child(f.first.navigable, f.top.navigable, &context)
         .unwrap();
+    draft
+        .set_hosted_history(Some(graph.clone()), None, &cancel())
+        .unwrap();
+    let prepared = draft.finish(&f.inner.dom, &cancel()).unwrap();
+    f.inner.dom.publish(prepared, &cancel()).unwrap();
+    let unlinked = f.inner.dom.snapshot();
+    let limits = DomFocusChainLimits::new(3, 1_000);
+    assert!(matches!(
+        unlinked
+            .document(f.first.document)
+            .unwrap()
+            .focus_chain(limits, &cancel()),
+        Err(DomFocusChainError::Hosted(DomHostedError::StaleBasis))
+    ));
+
+    let mut draft = Draft::new(&f.inner.dom, DomBatch::new().owner, &cancel()).unwrap();
     let graph = graph.clear_document(f.first.document, &context).unwrap();
     associate(
         &mut draft,
@@ -789,6 +910,25 @@ fn document_tree_children_follow_current_publication_reorder_and_retirement() {
     assert_eq!(retired_origin.active_document(), None);
     assert!(retired_origin.is_retired());
     assert!(!active_origin.is_retired());
+    let retired_chain = retired_snapshot
+        .document(f.first.document)
+        .unwrap()
+        .focus_chain(limits, &cancel())
+        .unwrap();
+    assert_eq!(retired_chain.entries(), &[Document(f.first.document)]);
+    let original_chain = active_snapshot
+        .document(f.first.document)
+        .unwrap()
+        .focus_chain(limits, &cancel())
+        .unwrap();
+    assert_eq!(
+        original_chain.entries(),
+        &[
+            Document(f.first.document),
+            NavigableContainer(f.containers[0]),
+            Document(f.top.document),
+        ]
+    );
     let mut edit = DomBatch::new();
     edit.detach(f.containers[0]);
     f.inner.dom.apply(edit, &cancel()).unwrap();
@@ -946,6 +1086,8 @@ fn document_tree_child_reads_meter_participants_and_stop_at_the_first_refusal() 
 
 #[test]
 fn document_tree_child_read_refuses_an_inconsistent_insertion_projection() {
+    use crate::focus::{DomFocusChainError, DomFocusChainLimits};
+
     let mut f = build_fixture(0, true, true);
     let container = f.containers[0];
     let before = f.inner.dom.snapshot();
@@ -988,4 +1130,13 @@ fn document_tree_child_read_refuses_an_inconsistent_insertion_projection() {
         Err(DomHostedError::StaleBasis)
     );
     assert!(!visited);
+    assert!(matches!(
+        f.inner
+            .dom
+            .snapshot()
+            .document(f.first.document)
+            .unwrap()
+            .focus_chain(DomFocusChainLimits::new(8, 1_000), &cancel()),
+        Err(DomFocusChainError::Hosted(DomHostedError::StaleBasis))
+    ));
 }
