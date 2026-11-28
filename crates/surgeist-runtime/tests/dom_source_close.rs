@@ -2078,3 +2078,163 @@ mod toggle_reentry;
 
 #[path = "dom_source_close/toggle_cleanup.rs"]
 mod toggle_cleanup;
+
+#[test]
+fn started_close_keeps_the_original_dispatch_after_adoption_and_retirement() {
+    struct Adoption {
+        source: DomSourceRuntime,
+        calls: Vec<&'static str>,
+    }
+    let (mut session, original, original_body, subject) = fixture();
+    let destination = session
+        .hosted_execution()
+        .create_top_level(&mut session.dom(), original.host(), &cancel())
+        .unwrap();
+    let snapshot = session.snapshot();
+    let html = snapshot
+        .node(destination.document().node())
+        .unwrap()
+        .children()[0];
+    let destination_body = snapshot.node(html).unwrap().children()[1];
+
+    let sentinel = {
+        let mut batch = DomBatch::new();
+        let sentinel = batch.create_element_ns(original.document(), Namespace::html(), "dialog");
+        batch.insert_before(&sentinel, original_body, None);
+        session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .created(&sentinel)
+            .unwrap()
+            .unwrap()
+    };
+    open(&mut session, sentinel);
+    let independent = start_close(&mut session, sentinel, None);
+    service(&mut session, &independent, &mut dispatcher(), &mut ());
+    drop(complete(
+        resume(&mut session, independent.operation()).unwrap(),
+    ));
+    let tasks = session.element_task_execution();
+    let records = [
+        DomElementTaskSourceKind::DomManipulation,
+        DomElementTaskSourceKind::UserInteraction,
+    ]
+    .map(|kind| {
+        let task = tasks.pending_task(kind, 0).unwrap().unwrap();
+        let association = task.queue_association().unwrap();
+        assert_eq!(task.id().target(), sentinel);
+        assert_eq!(association.global(), original.global());
+        assert_eq!(association.document(), original.document());
+        (kind, task)
+    });
+    assert_eq!(tasks.pending_total_tasks().unwrap(), records.len());
+
+    open(&mut session, subject);
+    let mut context = Adoption {
+        source: session.source_execution(),
+        calls: Vec::new(),
+    };
+    let mut registry = dispatcher();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BEFORE_TOGGLE,
+            DomEventCallback::new(move |dom, _, context: &mut Adoption, event| {
+                context.calls.push("adopt and retire");
+                assert_eq!(event.target(), Some(subject.into()));
+                for edit in [
+                    DomSourceEdit::insert_before(subject, destination_body, None),
+                    DomSourceEdit::remove_attribute(subject, "open"),
+                ] {
+                    drop(complete(
+                        context
+                            .source
+                            .apply(
+                                dom,
+                                edit,
+                                source_limits(),
+                                &mut DomSourceServices {
+                                    meta: None,
+                                    execution_scope: None,
+                                    style_policy: &mut |_| None,
+                                    url: None,
+                                },
+                                &cancel(),
+                            )
+                            .unwrap(),
+                    ));
+                }
+                let adopted = dom.snapshot();
+                let dialog = adopted.node(subject).unwrap();
+                assert_eq!(dialog.owner_document(), Some(destination.document()));
+                assert_eq!(dialog.parent(), Some(destination_body));
+                assert_eq!(dialog.attribute(&"open".into()), None);
+                assert!(!dialog.as_dialog().unwrap().has_close_watcher());
+                let mut retire = DomBatch::new();
+                retire.detach(subject);
+                retire.destroy(subject);
+                drop(dom.apply(retire, &cancel()).unwrap());
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
+    let once = registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::BEFORE_TOGGLE,
+            DomEventCallback::new(move |_, _, context: &mut Adoption, event| {
+                context.calls.push("late once");
+                assert_eq!(event.target(), Some(subject.into()));
+                assert_eq!(event.current_target(), Some(subject.into()));
+                assert!(
+                    event
+                        .composed_path()
+                        .any(|item| item == original_body.into())
+                );
+                assert!(
+                    !event
+                        .composed_path()
+                        .any(|item| item == destination_body.into())
+                );
+                event.prevent_default();
+                assert!(!event.default_prevented());
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                once: true,
+                ..DomEventListenerOptions::default()
+            },
+        )
+        .unwrap();
+    let request = start_close(
+        &mut session,
+        subject,
+        Some(DocumentString::from("unreached")),
+    );
+    let receipt = service(&mut session, &request, &mut registry, &mut context);
+    assert_eq!(context.calls, ["adopt and retire", "late once"]);
+    assert_eq!(receipt.callbacks(), 2);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
+    assert!(!registry.remove_listener(once));
+    assert!(matches!(
+        session.snapshot().node(subject),
+        Err(DomError::StaleNode)
+    ));
+    drop(receipt);
+    assert!(matches!(
+        resume(&mut session, request.operation()),
+        Err(DomSourceDriveError::Source(DomSourceRuntimeError::Dom(DomError::SourceReceiverRetired {
+            operation, subject: retired, action: HtmlDialogAction::ReadOpen,
+        }))) if operation == request.operation() && retired == subject
+    ));
+    assert!(session.dom().pending_source_edit().is_none());
+    assert_eq!(tasks.pending_total_tasks().unwrap(), records.len());
+    for (kind, original) in records {
+        assert_eq!(tasks.pending_task(kind, 0).unwrap(), Some(original));
+    }
+}
