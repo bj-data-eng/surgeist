@@ -528,7 +528,7 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
     }
 }
 
-pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate_join() {
+pub(super) fn form_reset_removes_bound_stylesheet_with_controls() {
     use surgeist_cssom::CssomStore;
     use surgeist_dom::style::DomStyleCssomRoot;
 
@@ -564,7 +564,17 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
         const style = document.createElement('style');
         style.textContent = 'p { color: red }';
         output.appendChild(style);
-        globalThis.refusedFormReset = form;
+        let cancel = true;
+        let events = 0;
+        form.addEventListener('reset', event => {
+            if (event.isTrusted && event.cancelable) events++;
+            form.reset();
+            if (cancel) event.preventDefault();
+        });
+        globalThis.formWithSheet = {
+            form, input, output, style, events: () => events,
+            allow: () => { cancel = false; }
+        };
         return 'ok';
     })()"#
         ),
@@ -572,17 +582,62 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
     );
     let sheets = styles.snapshot(root).unwrap().unwrap();
     assert_eq!(sheets.sheets().len(), 1);
-    assert_refused_form_reset_releases_source(
-        &mut host,
-        &permit,
-        DomError::StyleCompositionRequired(
-            surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet,
+    let original = host.snapshot().unwrap();
+    let style = original
+        .nodes()
+        .find(|&id| {
+            original
+                .node(id)
+                .unwrap()
+                .as_element()
+                .is_some_and(|element| {
+                    element.name().local_name().code_units() == [115, 116, 121, 108, 101]
+                })
+        })
+        .unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const {form, input, output, style, events} = formWithSheet;
+                form.reset();
+                return events() === 1 && input.value === 'dirty input' &&
+                    style.parentNode === output ? 'ok' : 'canceled reset changed controls';
+            })()"#
         ),
+        "ok"
     );
     assert_eq!(
-        styles.snapshot(root).unwrap().unwrap().sheets(),
-        sheets.sheets()
+        styles.snapshot(root).unwrap().unwrap().revision(),
+        sheets.revision()
     );
+    let before = host.snapshot().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const {form, input, output, style, events, allow} = formWithSheet;
+                allow();
+                if (form.reset() !== undefined || events() !== 2) return 'reset dispatch';
+                return input.value === 'default input' && output.value === 'default output' &&
+                    style.parentNode === null ? 'ok' : 'reset did not replace the Output';
+            })()"#
+        ),
+        "ok"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(
+        after.stamp().revision().get(),
+        before.stamp().revision().get() + 2
+    );
+    assert_eq!(after.node(style).unwrap().parent(), None);
+    assert!(original.node(style).unwrap().parent().is_some());
+    let latest = styles.snapshot(root).unwrap().unwrap();
+    assert!(latest.sheets().is_empty());
+    assert_eq!(latest.revision().value(), sheets.revision().value() + 1);
+    assert_eq!(sheets.sheets().len(), 1);
 }
 
 pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {
