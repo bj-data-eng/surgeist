@@ -32,7 +32,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.input_file_selection_empty(subject)
     }
 
-    pub(super) fn input_text_value_missing(
+    pub(super) fn input_value_mode_missing(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         element: &'a HtmlCapturedElement,
@@ -48,18 +48,10 @@ impl<'a> HtmlSemanticSession<'a> {
             .intrinsic()
             .copied()
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
-        if !matches!(
-            state,
-            HtmlInputType::Text
-                | HtmlInputType::Search
-                | HtmlInputType::Telephone
-                | HtmlInputType::Url
-                | HtmlInputType::Email
-                | HtmlInputType::Password
-        ) {
+        if !state.required_uses_current_value() {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        self.required_text_value_missing(subject, element)
+        self.required_current_value_missing(subject, element)
     }
 
     pub(super) fn textarea_value_missing(
@@ -72,10 +64,10 @@ impl<'a> HtmlSemanticSession<'a> {
         if kind != Some(KnownHtmlElement::Textarea) {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        self.required_text_value_missing(subject, element)
+        self.required_current_value_missing(subject, element)
     }
 
-    fn required_text_value_missing(
+    fn required_current_value_missing(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         element: &'a HtmlCapturedElement,

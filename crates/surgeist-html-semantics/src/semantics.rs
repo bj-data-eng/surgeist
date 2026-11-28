@@ -478,8 +478,8 @@ pub enum HtmlSemanticQuery {
     SelectValueMissing,
     /// Static Checkbox/Radio missingness from supplied current checkedness.
     CheckableInputValueMissing,
-    /// Required-current-value missingness for Text/Search/Telephone/URL/Email/Password inputs.
-    InputTextValueMissing,
+    /// Required-current-value missingness for applicable Value-mode Inputs.
+    InputValueModeMissing,
     /// Required File Upload missingness from the captured selected-file list.
     InputFileValueMissing,
     /// Intrinsic type-mismatch flag of the captured Email Input current value.
@@ -664,7 +664,7 @@ impl HtmlSemanticQuery {
             Self::OptionValue => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-option-value"
             }
-            Self::InputTextValueMissing => {
+            Self::InputValueModeMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required"
             }
             Self::InputFileValueMissing => {
@@ -1147,7 +1147,7 @@ pub enum HtmlSemanticFact {
     SelectPlaceholderLabelOption(HtmlSemanticValue<Option<HtmlCaptureSubjectId>>),
     SelectValueMissing(HtmlSemanticValue<bool>),
     CheckableInputValueMissing(HtmlSemanticValue<bool>),
-    InputTextValueMissing(HtmlSemanticValue<bool>),
+    InputValueModeMissing(HtmlSemanticValue<bool>),
     InputFileValueMissing(HtmlSemanticValue<bool>),
     InputEmailTypeMismatch(HtmlSemanticValue<bool>),
     TextareaValueMissing(HtmlSemanticValue<bool>),
@@ -3121,13 +3121,13 @@ impl<'a> HtmlSemanticSession<'a> {
                                     HtmlOptionReadbackOrigin::ValueAttribute,
                                 )?)
                             }
-                            HtmlSemanticQuery::InputTextValueMissing => {
-                                HtmlSemanticFact::InputTextValueMissing(if foreign {
+                            HtmlSemanticQuery::InputValueModeMissing => {
+                                HtmlSemanticFact::InputValueModeMissing(if foreign {
                                     HtmlSemanticValue::Unsupported(
                                         HtmlSemanticUnsupported::ForeignNamespace,
                                     )
                                 } else {
-                                    self.input_text_value_missing(&request.subject, element)?
+                                    self.input_value_mode_missing(&request.subject, element)?
                                 })
                             }
                             HtmlSemanticQuery::InputFileValueMissing => {
@@ -3582,8 +3582,8 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticQuery::OptionValue => {
                             HtmlSemanticFact::OptionValue(HtmlSemanticValue::Inapplicable)
                         }
-                        HtmlSemanticQuery::InputTextValueMissing => {
-                            HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
+                        HtmlSemanticQuery::InputValueModeMissing => {
+                            HtmlSemanticFact::InputValueModeMissing(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::InputFileValueMissing => {
                             HtmlSemanticFact::InputFileValueMissing(HtmlSemanticValue::Inapplicable)

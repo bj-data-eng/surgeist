@@ -236,10 +236,8 @@ pub(super) fn current_values(
         control.charge(1)?;
         let node = source.node(entry.node)?;
         let (raw, normalize) = if let Some(input) = node.as_input() {
-            if !input
-                .state()
-                .input_type()
-                .uses_current_value_for_directionality()
+            let kind = input.state().input_type();
+            if !kind.uses_current_value_for_directionality() && !kind.required_uses_current_value()
             {
                 continue;
             }

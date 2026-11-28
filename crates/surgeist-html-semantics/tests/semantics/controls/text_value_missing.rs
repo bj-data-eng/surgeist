@@ -104,7 +104,7 @@ fn report(
 }
 fn value(r: &HtmlSemanticReport) -> &HtmlSemanticValue<bool> {
     match r.results()[0].fact() {
-        HtmlSemanticFact::InputTextValueMissing(v)
+        HtmlSemanticFact::InputValueModeMissing(v)
         | HtmlSemanticFact::TextareaValueMissing(v)
         | HtmlSemanticFact::InputEmailTypeMismatch(v) => v,
         other => panic!("{other:?}"),
@@ -112,7 +112,7 @@ fn value(r: &HtmlSemanticReport) -> &HtmlSemanticValue<bool> {
 }
 fn query_for(local: &str) -> HtmlSemanticQuery {
     match local {
-        "input" => HtmlSemanticQuery::InputTextValueMissing,
+        "input" => HtmlSemanticQuery::InputValueModeMissing,
         "textarea" => HtmlSemanticQuery::TextareaValueMissing,
         _ => panic!("unsupported fixture role"),
     }
@@ -212,10 +212,29 @@ fn captured_email_mismatch_charges_each_current_unit_to_the_original_query() {
 }
 
 #[test]
-fn all_six_input_states_and_textarea_require_a_mutable_empty_current_value() {
-    for state in ["text", "search", "tel", "url", "email", "password"] {
+fn required_value_mode_inputs_and_textarea_need_a_mutable_empty_current_value() {
+    for (state, valid) in [
+        ("text", "x"),
+        ("search", "x"),
+        ("tel", "1"),
+        ("url", "https://example.test"),
+        ("email", "a@b"),
+        ("password", "x"),
+        ("number", "2"),
+        ("date", "2026-11-30"),
+        ("month", "2026-11"),
+        ("week", "2026-W48"),
+        ("time", "18:07"),
+        ("datetime-local", "2026-11-30T18:07"),
+    ] {
         let (c, id) = fixture("input", &[("type", state), ("required", "false")], true);
-        for (current, expected) in [("", true), ("x", false)] {
+        let cx = context(&c, &[]);
+        assert_eq!(
+            value(&report(&c, &cx, &id, query_for("input"), 100)),
+            &HtmlSemanticValue::Missing(HtmlSemanticMissing::CurrentValue(id.clone())),
+            "{state}"
+        );
+        for (current, expected) in [("", true), (valid, false)] {
             let cx = context(&c, &[(id.clone(), Some(current.into()))]);
             assert_eq!(
                 value(&report(&c, &cx, &id, query_for("input"), 100)),
@@ -364,7 +383,7 @@ fn content_value_and_descendant_default_text_cannot_replace_current_state() {
 }
 
 #[test]
-fn foreign_namespaces_wrong_roles_and_non_text_states_are_not_claimed_missingness() {
+fn value_mode_missingness_distinguishes_foreign_roles_and_inapplicable_types() {
     let (mut b, d) = builder();
     let foreign = expanded(
         &mut b,
@@ -391,21 +410,7 @@ fn foreign_namespaces_wrong_roles_and_non_text_states_are_not_claimed_missingnes
         }
     }
     for state in [
-        "hidden",
-        "checkbox",
-        "radio",
-        "date",
-        "month",
-        "week",
-        "time",
-        "datetime-local",
-        "number",
-        "range",
-        "color",
-        "file",
-        "submit",
-        "reset",
-        "button",
+        "hidden", "checkbox", "radio", "range", "color", "file", "submit", "reset", "button",
         "image",
     ] {
         let (c, id) = fixture("input", &[("type", state)], false);

@@ -37,6 +37,27 @@ impl HtmlInputType {
                 | Self::Button
         )
     }
+    /// Whether HTML applies `required` and tests this state's current Value-mode string.
+    ///
+    /// HTML877d #attr-input-required and the per-state applicability lists
+    /// define this rule. File, Checkbox and Radio use separate missingness rules.
+    pub const fn required_uses_current_value(self) -> bool {
+        matches!(
+            self,
+            Self::Text
+                | Self::Search
+                | Self::Telephone
+                | Self::Url
+                | Self::Email
+                | Self::Password
+                | Self::Date
+                | Self::Month
+                | Self::Week
+                | Self::Time
+                | Self::LocalDateTime
+                | Self::Number
+        )
+    }
     /// The mode of the `value` IDL attribute that this type state selects: `Default` for Hidden,
     /// Submit, Reset, Button and Image, `DefaultOn` for Checkbox and Radio, `Filename` for File,
     /// and `Value` for every other state. HTML877d #dom-input-value defines the four modes. The
