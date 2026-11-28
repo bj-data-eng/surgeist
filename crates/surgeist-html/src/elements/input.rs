@@ -20,6 +20,7 @@ pub use crate::internal::elements::input_email::input_email_type_mismatch_with;
 pub use crate::internal::elements::input_image::{
     HtmlInputImageHistory, HtmlInputImageUpdateGuard, HtmlInputImagesDisabled,
 };
+pub use crate::internal::elements::input_range_validity::HtmlInputRangeValidity;
 pub use crate::internal::elements::input_selection::{
     HtmlRangeTextBounds, HtmlRangeTextError, HtmlRangeTextMode, HtmlRangeTextPlan,
     HtmlRangeTextTarget,

@@ -779,3 +779,61 @@ fn a_host_byte_cap_bounds_a_numeric_materialization_as_a_session_limit_of_that_s
         }
     }
 }
+
+#[test]
+fn input_range_numeric_recovery_reports_the_rejecting_host_byte_cap() {
+    let (mut b, document) = builder();
+    let input = b
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "input"),
+            OrderedAttributes::new([("type", "number"), ("min", "1.234567890123456789")].map(
+                |(name, value)| {
+                    Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
+                },
+            ))
+            .unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let c = b.finish().unwrap();
+    let cx = context(&c);
+    let requests = [HtmlSemanticRequest::new(
+        c.subject_id(&input).unwrap(),
+        HtmlSemanticQuery::InputRangeValidity,
+    )];
+    let output = crate::semantics::support::result_record_bytes();
+    let cap = output + 2;
+    let expected = private(&c, &cx, time_limits(cap))
+        .query(&requests)
+        .unwrap_err();
+    assert_eq!(
+        expected.kind(),
+        &HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::AllocatedBytes,
+            limit: cap,
+            required: output + "1.234567890123456789".len(),
+        }
+    );
+    let limits = HtmlLimits::from_fn(
+        |_| u64::MAX,
+        |resource| {
+            if resource == HtmlResource::AllocatedBytes {
+                cap as u64
+            } else {
+                u64::MAX
+            }
+        },
+    );
+    let (ledger, root) = host(limits, 8);
+    let child = ledger
+        .child(root, "tenant", HtmlLimits::unlimited(), aggregate_tariffs())
+        .unwrap();
+    let host_scope = HtmlHostScope::new(ledger, child);
+    let mut session = open(&c, &cx, time_limits(10_000_000), &host_scope).unwrap();
+    let actual = session.query(&requests).unwrap_err();
+    assert_eq!(actual.kind(), expected.kind());
+    assert_eq!(actual.usage(), expected.usage());
+    assert_eq!(session.query(&[]).unwrap_err(), actual);
+}

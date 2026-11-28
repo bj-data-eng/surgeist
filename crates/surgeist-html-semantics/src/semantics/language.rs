@@ -439,8 +439,7 @@ impl HtmlLanguageDirectionFacts {
                         HtmlLanguageDirectionError::InapplicableCurrentValue(fact.subject.clone())
                     })?;
                 state.intrinsic().is_some_and(|kind| {
-                    kind.uses_current_value_for_directionality()
-                        || kind.required_uses_current_value()
+                    kind.uses_current_value_for_directionality() || kind.supports_value_as_number()
                 })
             } else {
                 false

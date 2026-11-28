@@ -22,6 +22,7 @@
 pub(crate) mod interpretation;
 
 pub(crate) mod input_coordinate;
+pub(crate) mod input_range;
 pub(crate) mod input_step;
 
 use crate::{

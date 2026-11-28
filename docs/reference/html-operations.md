@@ -1776,6 +1776,15 @@ list's emptiness. A required Input with unavailable selection evidence reports
 missing evidence. Candidacy remains a separate result even for a disabled
 File Input.
 
+`InputRangeValidity` reports underflow and overflow from a captured Number,
+Range, Date, Month, Week, Time, or Local Date and Time Input. It compares the
+actual current value against recovered `min` and `max` and honors the Range
+defaults. Time with reversed bounds reports both flags inside the open gap
+between maximum and minimum. Temporal comparisons use exact recovered
+components, including years and fractional seconds. An unavailable current value
+is missing evidence when a bound could affect the result. This observation is
+independent of step mismatch, UI bad input, and candidacy.
+
 `InputEmailTypeMismatch` evaluates the same capture's exact current Email
 value, using the single-address or list grammar selected by `multiple`.
 The empty current value has no mismatch. A comma in a nonempty list requires

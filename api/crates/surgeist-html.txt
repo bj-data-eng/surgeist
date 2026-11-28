@@ -1022,6 +1022,7 @@ pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::max
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::maximum_origin(&self) -> surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::minimum(&self) -> core::option::Option<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber>
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::minimum_origin(&self) -> surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin
+pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::range_validity(&self, current: surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber) -> surgeist_html::elements::input::HtmlInputRangeValidity
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::step_base(&self) -> surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::step_base_origin(&self) -> surgeist_html::attributes::input_bounds::HtmlInputNumericStepBaseOrigin
 pub fn surgeist_html::attributes::input_bounds::HtmlInputNumericConstraints::step_origin(&self) -> surgeist_html::attributes::input_bounds::HtmlInputNumericStepOrigin
@@ -2875,6 +2876,7 @@ pub fn surgeist_html::bounded::input::HtmlInputTemporalStepMeter::reserve(&mut s
 pub fn surgeist_html::bounded::input::HtmlInputTemporalStepMeter::work(&mut self, units: usize) -> core::result::Result<(), Self::Stop>
 pub fn surgeist_html::bounded::input::decode_input_temporal_step<M: surgeist_html::bounded::input::HtmlInputTemporalStepMeter>(state: surgeist_html::attributes::HtmlInputType, raw: core::option::Option<&[u16]>, max_bytes: usize, meter: &mut M) -> surgeist_html::bounded::input::HtmlInputTemporalStepOutcome<core::option::Option<surgeist_html::microsyntax::numeric::HtmlSignedDecimal>, <M as surgeist_html::bounded::input::HtmlInputTemporalStepMeter>::Stop>
 pub fn surgeist_html::bounded::input::input_colorspace_with<E>(raw: core::option::Option<&[u16]>, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace, E>
+pub fn surgeist_html::bounded::input::input_temporal_range_validity_with<E>(state: surgeist_html::attributes::HtmlInputType, minimum: core::option::Option<&[u16]>, maximum: core::option::Option<&[u16]>, current: core::option::Option<&[u16]>, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputRangeValidity>, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
 pub fn surgeist_html::bounded::input::input_temporal_step_parameters(state: surgeist_html::attributes::HtmlInputType) -> core::option::Option<surgeist_html::bounded::input::HtmlInputTemporalStepParameters>
 pub const fn surgeist_html::bounded::input::input_temporal_step_register_bytes() -> usize
 pub fn surgeist_html::bounded::input::input_value_as_date<E>(state: surgeist_html::attributes::HtmlInputType, value: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::bounded::input::HtmlInputDateRead, surgeist_html::bounded::input::HtmlInputValueConversionError<E>>
@@ -4906,6 +4908,10 @@ pub fn surgeist_html::elements::input::HtmlInputInvalidSelectionRange::start(sel
 impl core::error::Error for surgeist_html::elements::input::HtmlInputInvalidSelectionRange
 impl core::fmt::Display for surgeist_html::elements::input::HtmlInputInvalidSelectionRange
 pub fn surgeist_html::elements::input::HtmlInputInvalidSelectionRange::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::elements::input::HtmlInputRangeValidity
+impl surgeist_html::elements::input::HtmlInputRangeValidity
+pub fn surgeist_html::elements::input::HtmlInputRangeValidity::overflow(self) -> bool
+pub fn surgeist_html::elements::input::HtmlInputRangeValidity::underflow(self) -> bool
 pub struct surgeist_html::elements::input::HtmlInputReset
 impl surgeist_html::elements::input::HtmlInputReset
 pub fn surgeist_html::elements::input::HtmlInputReset::new(initial: surgeist_html::elements::input::HtmlInputFlags) -> Self

@@ -237,8 +237,7 @@ pub(super) fn current_values(
         let node = source.node(entry.node)?;
         let (raw, normalize) = if let Some(input) = node.as_input() {
             let kind = input.state().input_type();
-            if !kind.uses_current_value_for_directionality() && !kind.required_uses_current_value()
-            {
+            if !kind.uses_current_value_for_directionality() && !kind.supports_value_as_number() {
                 continue;
             }
             (input.value(), false)
