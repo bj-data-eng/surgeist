@@ -2457,6 +2457,11 @@ fn execute_slot_source_edit(
             surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::Style(request)) => {
                 panic!("manual Slot assignment has no external Style phase: {request:?}")
             }
+            surgeist_dom::source::DomSourceProgress::Request(
+                DomSourceRequest::FormStylesheets(request),
+            ) => {
+                panic!("manual Slot assignment has no Form sheets: {request:?}")
+            }
             surgeist_dom::source::DomSourceProgress::Request(DomSourceRequest::HostedChild(
                 request,
             )) => {

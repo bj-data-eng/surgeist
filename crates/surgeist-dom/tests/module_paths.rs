@@ -194,10 +194,11 @@ use surgeist_dom::source::attribute::{
     DomSourceAttributeVerificationOutcome, DomSourceAttributeVerificationRequest,
 };
 use surgeist_dom::source::{
-    DomSourceCleanupCause, DomSourceCompletion, DomSourceEdit, DomSourceExecutionEntryScope,
-    DomSourceFailure, DomSourceInput, DomSourceInvariantFailure, DomSourceInvariantReason,
-    DomSourceLease, DomSourceLimits, DomSourceOperationId, DomSourceOutput, DomSourcePhase,
-    DomSourceProgress, DomSourceRequest, DomSourceStatus, DomSourceStoppedAction,
+    DomFormResetPublicationError, DomSourceCleanupCause, DomSourceCompletion, DomSourceEdit,
+    DomSourceExecutionEntryScope, DomSourceFailure, DomSourceFormStylesheetsRequest,
+    DomSourceInput, DomSourceInvariantFailure, DomSourceInvariantReason, DomSourceLease,
+    DomSourceLimits, DomSourceOperationId, DomSourceOutput, DomSourcePhase, DomSourceProgress,
+    DomSourceRequest, DomSourceStatus, DomSourceStoppedAction,
 };
 use surgeist_dom::style::inline::{
     DomInlineStyleBatchContext, DomInlineStyleCapture, DomInlineStyleChange, DomInlineStyleCommit,

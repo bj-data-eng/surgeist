@@ -141,6 +141,8 @@ pub enum DomSourcePhase {
     FullscreenExitHandoff,
     /// A private Form reset awaits admission of its original hosted removals.
     HostedRemovals,
+    /// A private Form reset awaits the original CSSOM owners.
+    FormStylesheets,
     /// Original HTML Script preparation is parked in the private segment.
     ScriptPreparation,
     /// An original Meta CSP insertion awaits its policy processor.
@@ -201,6 +203,7 @@ pub enum DomSourceRequest {
     Style(DomStyleRequest),
     HostedChild(crate::internal::hosted::DomHostedChildRequest),
     HostedRemovals(crate::internal::store::source::operation::hosted_removals::DomSourceHostedRemovalsRequest),
+    FormStylesheets(crate::internal::store::source::operation::form_stylesheets::DomSourceFormStylesheetsRequest),
     Event(DomSourceEventRequest),
     Dialog(DomSourceDialogRequest),
     ElementTaskQueue(crate::internal::store::source::operation::element_queue::DomSourceElementTaskQueueRequest),

@@ -631,15 +631,15 @@ selection silently.
 Runtime delivers its trusted plain `reset` event, which bubbles and can be
 canceled. The original Source accepts the dispatch receipt and resumes with
 the Form's current associated controls. When resetting an Output detaches
-live child navigables, Runtime admits the reached traversal and destruction
-queue destinations before Source publishes the controls and child unlinking
-together. Later tasks run the retained history and destruction continuations.
-A refused admission retains the original reset and its event receipt for
-resumption. A reset that reaches a stylesheet removal outside this
-publication or a refused Object activity transition discards its control
-changes, releases its lock, and reports the original refusal. Attached
-scripting delivers `formResetCallback()` after the method releases its reset
-lock.
+associated Styles or live child navigables, Source prepares removal of the
+exact sheets in their original CSSOM roots. Runtime admits any reached
+traversal and destruction queue destinations. The controls, sheet removals
+and child unlinking publish together. Later tasks run the retained history
+and destruction continuations. A refused admission retains the original
+reset and its event receipt for resumption. A refused Object activity
+transition discards the private control changes, releases the reset lock,
+and reports the original refusal. Attached scripting delivers
+`formResetCallback()` after the method releases its reset lock.
 
 The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus

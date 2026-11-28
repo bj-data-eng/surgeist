@@ -2640,6 +2640,7 @@ fn main() {
             "form-reset-style" => form_reset::form_reset_removes_bound_stylesheet_with_controls(),
             "form-reset-object-refusal" => form_reset::form_reset_releases_its_lock_after_object_activity_refusal(),
             "form-reset-hosted-admission" => form_reset::hosted_form_reset_admits_every_removal_before_publication(),
+            "form-reset-mixed-styles" => form_reset::hosted_form_reset_joins_stylesheets_in_both_orders(),
             "form-reset-hosted-output" => form_reset::attached_form_reset_removes_a_real_hosted_output_child(),
             "fieldset-attributes" => fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity(),
             "output-values" => output_values::attached_output_reads_native_values_and_stores_custom_validity(),
@@ -2848,6 +2849,7 @@ fn main() {
     form_reset::attached_form_reset_restores_all_native_families_before_face_callbacks();
     form_reset::attached_form_reset_removes_a_real_hosted_output_child();
     form_reset::hosted_form_reset_admits_every_removal_before_publication();
+    form_reset::hosted_form_reset_joins_stylesheets_in_both_orders();
     form_reset::form_reset_removes_bound_stylesheet_with_controls();
     form_reset::form_reset_releases_its_lock_after_object_activity_refusal();
     fieldset_attributes::attached_fieldset_reads_native_form_and_stores_custom_validity();

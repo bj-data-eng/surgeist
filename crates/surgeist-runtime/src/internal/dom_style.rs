@@ -4402,6 +4402,11 @@ mod tests {
                         panic!("Style fixture cannot request a hosted child")
                     }
                     DomSourceProgress::Request(
+                        surgeist_dom::source::DomSourceRequest::FormStylesheets(_),
+                    ) => {
+                        panic!("Style fixture cannot reach Form removal")
+                    }
+                    DomSourceProgress::Request(
                         surgeist_dom::source::DomSourceRequest::DesignMode(_),
                     ) => {
                         panic!("Style fixture cannot request a designMode service")
