@@ -2142,11 +2142,24 @@ impl DomSession {
             self.events.execution(),
         )
     }
+    pub(crate) fn has_active_slot_checkpoint(
+        &self,
+    ) -> Result<bool, crate::internal::dom_lifecycle::DomHostedRuntimeError> {
+        self.hosted.has_active_slot_checkpoint()
+    }
+
     /// Run the next pending media removal at a native stable-state checkpoint.
     pub fn media_checkpoint_step(
         &mut self,
         cancel: &AtomicBool,
     ) -> Result<Option<surgeist_dom::media::DomMediaRemoval>, DomError> {
+        if self.dom.has_pending_media_removals()
+            && self
+                .has_active_slot_checkpoint()
+                .map_err(|_| DomError::MediaRemovalStableStateUnavailable)?
+        {
+            return Err(DomError::MediaRemovalStableStateUnavailable);
+        }
         self.media_stable_state.run_native(&mut self.dom, cancel)
     }
 

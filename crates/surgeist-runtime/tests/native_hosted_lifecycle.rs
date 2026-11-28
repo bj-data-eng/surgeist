@@ -3538,8 +3538,28 @@ fn native_file_selection_checks_the_observed_basis_and_live_upload_eligibility()
 
 #[test]
 fn skipped_file_selection_retains_its_slot_checkpoint_during_document_destruction() {
+    for refusal in [
+        SlotRefusal::Transfer,
+        SlotRefusal::Preparation,
+        SlotRefusal::Callback,
+        SlotRefusal::Abandonment,
+    ] {
+        verify_slot_checkpoint_retained_for_skipped_file_selection(refusal);
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SlotRefusal {
+    Transfer,
+    Preparation,
+    Callback,
+    Abandonment,
+}
+
+fn verify_slot_checkpoint_retained_for_skipped_file_selection(boundary: SlotRefusal) {
     use surgeist_dom::{
         file::{DomFile, DomFileList},
+        limits::DomResource,
         task::DomElementTaskSourceKind::UserInteraction,
     };
     use surgeist_runtime::element_task::DomElementTask;
@@ -3598,37 +3618,95 @@ fn skipped_file_selection_retains_its_slot_checkpoint_during_document_destructio
         element_tasks: tasks.clone(),
         seen: Vec::new(),
     };
-    let mut events = registry();
-    events
-        .add_listener(
-            &mut session.dom(),
-            slot,
-            DomEventType::SLOT_CHANGE,
-            DomEventCallback::new(move |_, _, context: &mut Context, event| {
-                context.seen.push(Observation {
-                    label: "detached Slot",
-                    current: event.current_target(),
-                    target: Some(slot),
-                    phase: event.phase(),
-                    payload: None,
-                    bubbles: event.bubbles(),
-                });
-                Ok(())
-            }),
-            DomEventListenerOptions::default(),
-        )
-        .unwrap();
+    let listener = DomEventCallback::new(move |_, _, context: &mut Context, event| {
+        context.seen.push(Observation {
+            label: "detached Slot",
+            current: event.current_target(),
+            target: Some(slot),
+            phase: event.phase(),
+            payload: None,
+            bubbles: event.bubbles(),
+        });
+        Ok(())
+    });
+    let new_registry = |session: &mut DomSession| {
+        let mut events = registry();
+        events
+            .add_listener(
+                &mut session.dom(),
+                slot,
+                DomEventType::SLOT_CHANGE,
+                listener.clone(),
+                DomEventListenerOptions::default(),
+            )
+            .unwrap();
+        events
+    };
+    let mut events = if boundary == SlotRefusal::Preparation {
+        // Admit just the captured target. The event needs its own work.
+        DomEventDispatcher::new(DomEventRegistryLimits {
+            registrations: 16,
+            pending_events: 8,
+            nested_dispatches: 8,
+            storage_bytes: 16_000_000,
+            work: 1,
+        })
+        .unwrap()
+    } else {
+        new_registry(&mut session)
+    };
     let mut cut = roomy;
     cut.dispatch.callbacks = 0;
-    assert!(matches!(
-        DomElementTaskRuntime::run_next(
-            &mut session.dom(), UserInteraction, &mut events, &mut context, cut, &cancel(),
-        )
-        .unwrap(),
-        DomElementTaskProgress::Retained { task, .. } if task == original
-    ));
+    if boundary == SlotRefusal::Transfer {
+        cut.source = DomSourceLimits::new(16_000_000, 1_000_000, 10_000_000, 128, 0, 4096, 1);
+    }
+    let refusal = DomElementTaskRuntime::run_next(
+        &mut session.dom(),
+        UserInteraction,
+        &mut events,
+        &mut context,
+        cut,
+        &cancel(),
+    );
+    match boundary {
+        SlotRefusal::Transfer => {
+            assert!(
+                matches!(
+                    refusal,
+                    Err(DomElementTaskRuntimeError::Dispatch(
+                        DomEventDispatchError::Dom(DomError::ResourceLimit {
+                            resource: DomResource::SlotQueryOutput,
+                            limit: 0,
+                        }),
+                    ))
+                ),
+                "{refusal:?}"
+            );
+            assert_eq!(session.snapshot().pending_slot_signals(), &[slot]);
+        }
+        SlotRefusal::Preparation => {
+            assert!(
+                matches!(
+                    refusal,
+                    Err(DomElementTaskRuntimeError::Dispatch(
+                        DomEventDispatchError::Admission(
+                            surgeist_runtime::event::DomEventResource::Work,
+                        )
+                    ))
+                ),
+                "{refusal:?}"
+            );
+            assert!(session.snapshot().pending_slot_signals().is_empty());
+        }
+        SlotRefusal::Callback | SlotRefusal::Abandonment => {
+            assert!(matches!(
+                refusal.unwrap(),
+                DomElementTaskProgress::Retained { task, .. } if task == original
+            ));
+            assert!(session.snapshot().pending_slot_signals().is_empty());
+        }
+    }
     assert!(context.seen.is_empty());
-    assert!(session.snapshot().pending_slot_signals().is_empty());
 
     let mut hosted = session.hosted_execution();
     let destruction = hosted
@@ -3662,6 +3740,29 @@ fn skipped_file_selection_retains_its_slot_checkpoint_during_document_destructio
         tasks.pending_task(UserInteraction, 0).unwrap(),
         Some(original)
     );
+    if matches!(
+        boundary,
+        SlotRefusal::Preparation | SlotRefusal::Abandonment
+    ) {
+        drop(events);
+        events = new_registry(&mut session);
+    }
+    if boundary == SlotRefusal::Abandonment {
+        assert!(matches!(
+            DomElementTaskRuntime::run_next(
+                &mut session.dom(),
+                UserInteraction,
+                &mut events,
+                &mut context,
+                roomy,
+                &cancel(),
+            ),
+            Err(DomElementTaskRuntimeError::Dispatch(
+                DomEventDispatchError::Abandoned
+            ))
+        ));
+        assert!(context.seen.is_empty());
+    }
     assert!(matches!(
         DomElementTaskRuntime::run_next(
             &mut session.dom(), UserInteraction, &mut events, &mut context, roomy, &cancel(),
@@ -3670,9 +3771,13 @@ fn skipped_file_selection_retains_its_slot_checkpoint_during_document_destructio
         DomElementTaskProgress::SkippedFileSelectionIneligible(found)
             if DomElementTask::FileSelection(found) == original
     ));
-    assert_eq!(context.seen.len(), 1);
-    assert_eq!(context.seen[0].current, Some(slot.into()));
-    assert!(context.seen[0].bubbles);
+    if boundary == SlotRefusal::Abandonment {
+        assert!(context.seen.is_empty());
+    } else {
+        assert_eq!(context.seen.len(), 1);
+        assert_eq!(context.seen[0].current, Some(slot.into()));
+        assert!(context.seen[0].bubbles);
+    }
     assert!(matches!(
         pump_destruction(&mut hosted, &mut session.dom(), destruction).unwrap(),
         DomHostedTaskProgress::Complete { operation } if operation == destruction.operation()

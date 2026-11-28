@@ -643,6 +643,7 @@ impl fmt::Debug for PrepareDocumentScriptFailure {
 
 impl PreparedDocumentScriptHost {
     /// Admit the owner backing before moving the exact Session into it.
+    /// An active native Slot turn keeps the Session until its captured work settles.
     #[expect(
         clippy::result_large_err,
         reason = "Refusal returns the original DomSession and live obligations without allocating after admission failure"
@@ -657,6 +658,19 @@ impl PreparedDocumentScriptHost {
             return Err(PrepareDocumentScriptFailure {
                 session,
                 error: DocumentScriptNativeError::StorageLimit,
+            });
+        }
+        let slot_turn = session.has_active_slot_checkpoint().and_then(|active| {
+            if active {
+                Err(DomHostedRuntimeError::CheckpointUnavailable)
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(error) = slot_turn {
+            return Err(PrepareDocumentScriptFailure {
+                session,
+                error: error.into(),
             });
         }
         let backing = match session.hosted_execution().retain_script_payload(

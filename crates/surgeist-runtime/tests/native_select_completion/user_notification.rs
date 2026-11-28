@@ -18,6 +18,7 @@ use surgeist_runtime::{
         DomEventCallback, DomEventDispatchLimits, DomEventDispatcher, DomEventListenerOptions,
         DomEventRegistryLimits, DomEventType,
     },
+    hosted::DomHostedRuntimeError,
     source::DomSourceDriveError,
 };
 
@@ -365,7 +366,7 @@ fn native_select_checkpoint_delivers_an_author_slot_signal() {
 }
 
 #[test]
-fn native_slot_checkpoint_retains_the_undelivered_suffix() {
+fn native_slot_checkpoint_retains_its_batch_when_an_unrelated_agent_starts() {
     select_checkpoint_delivers_author_slot(true);
 }
 
@@ -472,6 +473,12 @@ fn select_checkpoint_delivers_author_slot(cut_before_slot_callback: bool) {
         assert_eq!(context.notifications.len(), 2);
         assert_eq!(context.tasks.pending_total_tasks().unwrap(), 1);
         assert!(session.snapshot().pending_slot_signals().is_empty());
+        let mut hosted = session.hosted_execution();
+        let other = hosted.create_host(&mut session.dom(), &cancel).unwrap();
+        let other = hosted
+            .create_top_level(&mut session.dom(), other, &cancel)
+            .unwrap();
+        assert_ne!(other.document(), document);
         result = DomElementTaskRuntime::run_next(
             &mut session.dom(),
             DomElementTaskSourceKind::UserInteraction,
@@ -888,14 +895,18 @@ fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
     );
     let slot = setup.create_element_ns(document, Namespace::html(), "slot");
     let light = setup.create_text(document, "assigned option content");
+    let media = setup.create_element_ns(document, Namespace::html(), "audio");
+    let body = session.snapshot().node(select).unwrap().parent().unwrap();
     setup.insert_before(&slot, &root, None);
     setup.insert_before(&light, &host, None);
     setup.insert_before(&host, option, None);
     setup.insert_before(&content, select, None);
+    setup.insert_before(&media, body, None);
     let made = session.dom().apply(setup, &cancel).unwrap();
     let content = made.created(&content).unwrap().unwrap();
     let original_host = made.created(&host).unwrap().unwrap();
     let original_slot = made.created(&slot).unwrap().unwrap();
+    let media = made.created(&media).unwrap().unwrap();
     let before = session.snapshot();
     assert_eq!(before.pending_slot_signals(), &[original_slot]);
     assert!(before.node(content).unwrap().children().is_empty());
@@ -935,6 +946,9 @@ fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
             DomEventCallback::new(move |dom, _, _: &mut Context, event| {
                 assert_eq!(event.target(), Some(original_slot.into()));
                 observed.borrow_mut().push(original_slot);
+                let mut remove = DomBatch::new();
+                remove.detach(media);
+                dom.apply(remove, &AtomicBool::new(false)).unwrap();
                 let mut assign = DomBatch::new();
                 let child = assign.create_text(document, "new assignment after capture");
                 assign.insert_before(&child, earlier_host, None);
@@ -1025,6 +1039,48 @@ fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
     assert!(matches!(head, DomElementTaskProgress::Retained { task, .. } if task == queued));
     assert_eq!(*deliveries.borrow(), [original_slot]);
     assert_eq!(session.snapshot().pending_slot_signals(), &[earlier_slot]);
+    assert!(matches!(
+        session.media_checkpoint_step(&cancel),
+        Err(DomError::MediaRemovalStableStateUnavailable)
+    ));
+    #[cfg(feature = "document-scripting")]
+    let mut session = {
+        use surgeist_runtime::document_scripting::{
+            DocumentScriptNativeError, PreparedDocumentScriptHost,
+        };
+
+        let refusal = PreparedDocumentScriptHost::prepare(
+            session,
+            1_000_000,
+            std::sync::Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            refusal.error,
+            DocumentScriptNativeError::Hosted(DomHostedRuntimeError::CheckpointUnavailable)
+        ));
+        refusal.session
+    };
+    assert!(matches!(
+        DomElementTaskRuntime::run_next(
+            &mut session.dom(),
+            DomElementTaskSourceKind::UserInteraction,
+            &mut registry,
+            &mut context,
+            limits(),
+            &cancel,
+        ),
+        Err(DomElementTaskRuntimeError::Hosted(
+            DomHostedRuntimeError::CheckpointUnavailable
+        ))
+    ));
+    let (_, _, copy_slot) = copied_author_slot(&session.snapshot(), content);
+    assert_eq!(
+        *deliveries.borrow(),
+        [original_slot, earlier_slot, copy_slot]
+    );
+    let removal = session.media_checkpoint_step(&cancel).unwrap().unwrap();
+    assert_eq!(removal.target(), media);
 
     let result = DomElementTaskRuntime::run_next(
         &mut session.dom(),
@@ -1047,7 +1103,6 @@ fn selectedcontent_copy_delivers_its_own_author_slot_signal() {
     assert_eq!(task.id(), queued.id());
     assert!(input.failures().is_empty());
     assert!(change.unwrap().failures().is_empty());
-    let (_, _, copy_slot) = copied_author_slot(&session.snapshot(), content);
     assert_eq!(
         *deliveries.borrow(),
         [original_slot, earlier_slot, copy_slot, earlier_slot]

@@ -416,13 +416,21 @@ impl Dom {
                     },
                 ))
             }
-            Some(Task::MutationNotification) => self
-                .publish_slot_checkpoint(limits.slots, cancel)
-                .map(crate::internal::select::DomNativeCheckpoint::Slots),
+            Some(Task::MutationNotification) => {
+                let (commit, targets) = self.publish_slot_checkpoint(limits.slots, cancel)?;
+                Ok(crate::internal::select::DomNativeCheckpoint::Slots(
+                    crate::internal::slot::DomSlotNotifications::new(
+                        self.snapshot(),
+                        targets,
+                        commit.changes,
+                    ),
+                ))
+            }
         }
     }
 
-    /// Transfer the Slot signals at the front of the native checkpoint FIFO.
+    /// Transfer the exact Slot targets at the front of the native checkpoint
+    /// FIFO. The list owns only the ordered node identities.
     ///
     /// A checkpoint with pending observer deliveries or an earlier Select
     /// occurrence remains available through `native_checkpoint_step`.
@@ -431,7 +439,7 @@ impl Dom {
         &mut self,
         limits: crate::internal::slot::DomSlotQueryLimits,
         cancel: &AtomicBool,
-    ) -> Result<Option<crate::internal::slot::DomSlotNotifications>, DomError> {
+    ) -> Result<Option<Arc<[NodeId]>>, DomError> {
         self.require_source_idle()?;
         check_cancel(cancel)?;
         if self.child_list_turn.is_some()
@@ -443,21 +451,18 @@ impl Dom {
         {
             return Ok(None);
         }
-        self.publish_slot_checkpoint(limits, cancel).map(Some)
+        let (_, targets) = self.publish_slot_checkpoint(limits, cancel)?;
+        Ok(Some(targets))
     }
 
     fn publish_slot_checkpoint(
         &mut self,
         limits: crate::internal::slot::DomSlotQueryLimits,
         cancel: &AtomicBool,
-    ) -> Result<crate::internal::slot::DomSlotNotifications, DomError> {
+    ) -> Result<(DomCommit, Arc<[NodeId]>), DomError> {
         let (prepared, targets) = self.prepare_slot_checkpoint(limits, cancel)?;
         let commit = self.publish(prepared, cancel)?;
-        Ok(crate::internal::slot::DomSlotNotifications::new(
-            self.snapshot(),
-            targets,
-            commit.changes,
-        ))
+        Ok((commit, targets))
     }
 
     pub fn complete_select_task(

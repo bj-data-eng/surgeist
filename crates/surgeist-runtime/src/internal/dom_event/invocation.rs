@@ -7,11 +7,16 @@ pub struct DomEventDispatch {
 }
 
 pub(crate) struct NativeSlotCheckpoint {
-    pub(crate) signals: surgeist_dom::shadow::DomSlotNotifications,
+    pub(crate) targets: std::sync::Arc<[NodeId]>,
     pub(crate) next: usize,
     pub(crate) dispatch: Option<DomEventDispatch>,
-    registry: u64,
     _backing: EventAllocation,
+}
+impl NativeSlotCheckpoint {
+    pub(crate) fn advance_target(&mut self) {
+        self.dispatch = None;
+        self.next += 1;
+    }
 }
 impl std::fmt::Debug for DomEventDispatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -33,33 +38,27 @@ impl<C> DomEventDispatcher<C> {
         let count = dom.snapshot().pending_slot_signals().len();
         let limits = surgeist_dom::shadow::DomSlotQueryLimits::new(output_limit, output_limit)?;
         self.storage.step(count, cancel)?;
-        // The output Vec and the resulting immutable target slice overlap.
-        let bytes = count
-            .checked_mul(2 * std::mem::size_of::<NodeId>())
-            .and_then(|n| n.checked_add(2 * std::mem::size_of::<usize>()))
+        let target_bytes = count
+            .checked_mul(std::mem::size_of::<NodeId>())
             .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
+        let bytes = target_bytes
+            .checked_add(2 * std::mem::size_of::<usize>())
+            .ok_or(DomEventDispatchError::Admission(DomEventResource::Storage))?;
+        // Admit the formation overlap and release the temporary Vec debit as
+        // soon as the canonical transfer returns its immutable target list.
+        let _scratch = self
+            .storage
+            .reserve(dom, target_bytes, target_bytes, 0, cancel)?;
         let backing = self.storage.reserve(dom, bytes, bytes, 0, cancel)?;
         Ok(dom
             .raw_mut()
             .take_native_slot_checkpoint(limits, cancel)?
-            .map(|signals| NativeSlotCheckpoint {
-                signals,
+            .map(|targets| NativeSlotCheckpoint {
+                targets,
                 next: 0,
                 dispatch: None,
-                registry: self.owner.id,
                 _backing: backing,
             }))
-    }
-
-    pub(crate) fn qualify_slot_checkpoint(
-        &self,
-        checkpoint: &NativeSlotCheckpoint,
-    ) -> Result<(), DomEventDispatchError> {
-        if self.owner.id == checkpoint.registry {
-            Ok(())
-        } else {
-            Err(DomEventDispatchError::WrongContinuation)
-        }
     }
 
     pub(crate) fn prepare_slot_change(
@@ -287,6 +286,17 @@ impl SignalAbortFiring {
 impl DomEventDispatch {
     pub(crate) fn has_started(&self) -> bool {
         self.owner.has_started()
+    }
+
+    pub(crate) fn belongs_to<C>(&self, dispatcher: &DomEventDispatcher<C>) -> bool {
+        self.registry == dispatcher.owner.id
+    }
+
+    pub(crate) fn is_abandoned(&self) -> bool {
+        matches!(
+            self.owner.terminal_dispatch_error(),
+            Some(DomEventDispatchError::Abandoned)
+        )
     }
 
     /// Drive this same invocation synchronously through the canonical kernel.

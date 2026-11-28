@@ -3,8 +3,9 @@
 use super::*;
 use crate::internal::{
     dom_event::{
-        DispatchHost, DispatchUsage, DomEventDispatchOutcome, DomEventDispatcher,
-        DomEventTimestampUnavailable, NativeSlotCheckpoint,
+        DispatchHost, DispatchUsage, DomEventDispatch, DomEventDispatchError,
+        DomEventDispatchOutcome, DomEventDispatcher, DomEventTimestampUnavailable,
+        NativeSlotCheckpoint,
     },
     element_tasks::{DomElementTaskRunLimits, DomElementTaskRuntimeError},
 };
@@ -46,8 +47,13 @@ impl NativeTaskRunning {
             event_loop: &self.event_loop,
             batch,
         };
-        if (loan.batch.is_some() || dom.raw().has_pending_native_slot_checkpoint())
-            && dom.raw().has_active_document_script_registration()
+        let pending = dom.raw().has_pending_native_slot_checkpoint();
+        if pending {
+            // Even a skipped body has reached and still owes its checkpoint.
+            // Keep that original row across refusal before target transfer.
+            started.set(true);
+        }
+        if (loan.batch.is_some() || pending) && dom.raw().has_active_document_script_registration()
         {
             return Err(DomElementTaskRuntimeError::Hosted(
                 DomHostedRuntimeError::CheckpointUnavailable,
@@ -58,15 +64,14 @@ impl NativeTaskRunning {
                 if !dom.raw().has_pending_native_slot_checkpoint() {
                     return Ok(None);
                 }
-                self.qualify_slot_batch(dom, cancel)?;
-                loan.batch = dispatcher
-                    .take_slot_checkpoint(dom, limits.source.output_records(), cancel)
-                    .map_err(DomElementTaskRuntimeError::Dispatch)?;
-                if loan.batch.is_some() {
-                    // The original task now owns a real checkpoint even when
-                    // its body had no listener or was previously skipped.
-                    started.set(true);
-                }
+                // Only a new transfer needs proof about the global DOM queue.
+                // A held batch already belongs to this exact Window loop.
+                loan.batch = self.capture_slot_batch(
+                    dom,
+                    dispatcher,
+                    limits.source.output_records(),
+                    cancel,
+                )?;
             }
             let batch = loan
                 .batch
@@ -74,21 +79,43 @@ impl NativeTaskRunning {
                 .ok_or(DomElementTaskRuntimeError::Hosted(
                     DomHostedRuntimeError::CheckpointUnavailable,
                 ))?;
-            dispatcher
-                .qualify_slot_checkpoint(batch)
-                .map_err(DomElementTaskRuntimeError::Dispatch)?;
-            let Some(target) = batch.signals.targets().get(batch.next).copied() else {
+            let Some(target) = batch.targets.get(batch.next).copied() else {
+                self.with_hosted_state(dom, |state| {
+                    state.slot_checkpoint_active = false;
+                    Ok(())
+                })?;
                 loan.batch = None;
                 continue;
             };
             if batch
                 .dispatch
                 .as_ref()
+                .is_some_and(DomEventDispatch::is_abandoned)
+            {
+                self.with_hosted_state(dom, |state| {
+                    state
+                        .step(cancel)
+                        .map_err(DomElementTaskRuntimeError::Hosted)
+                })?;
+                batch.advance_target();
+                return Err(DomElementTaskRuntimeError::Dispatch(
+                    DomEventDispatchError::Abandoned,
+                ));
+            }
+            if batch
+                .dispatch
+                .as_ref()
+                .is_some_and(|dispatch| !dispatch.has_started() && !dispatch.belongs_to(dispatcher))
+            {
+                batch.dispatch = None;
+            }
+            if batch
+                .dispatch
+                .as_ref()
                 .is_none_or(|dispatch| !dispatch.has_started())
                 && !self.slot_is_live(dom, target, cancel)?
             {
-                batch.dispatch = None;
-                batch.next += 1;
+                batch.advance_target();
                 continue;
             }
             if batch.dispatch.is_none() {
@@ -103,43 +130,66 @@ impl NativeTaskRunning {
                 .dispatch
                 .as_mut()
                 .ok_or(DomElementTaskRuntimeError::Binding)?;
-            match dispatch
-                .advance_with_host_usage(
-                    dom,
-                    dispatcher,
-                    context,
-                    (limits.dispatch, usage),
-                    cancel,
-                    DispatchHost::Unavailable,
-                )
-                .map_err(DomElementTaskRuntimeError::Dispatch)?
-            {
-                DomEventDispatchOutcome::Complete(_) => {
-                    batch.dispatch = None;
-                    batch.next += 1;
+            match dispatch.advance_with_host_usage(
+                dom,
+                dispatcher,
+                context,
+                (limits.dispatch, usage),
+                cancel,
+                DispatchHost::Unavailable,
+            ) {
+                Ok(DomEventDispatchOutcome::Complete(_)) => batch.advance_target(),
+                Ok(retained) => return Ok(Some(retained)),
+                Err(error) => {
+                    // Shared dispatch proved abandonment. Report it once and
+                    // leave the remaining targets for the original task.
+                    if matches!(error, DomEventDispatchError::Abandoned) {
+                        batch.advance_target();
+                    }
+                    return Err(DomElementTaskRuntimeError::Dispatch(error));
                 }
-                retained => return Ok(Some(retained)),
             }
         }
     }
 
-    fn qualify_slot_batch(
+    fn capture_slot_batch<C>(
         &self,
-        dom: &DomEventDom<'_>,
+        dom: &mut DomEventDom<'_>,
+        dispatcher: &DomEventDispatcher<C>,
+        output_limit: usize,
         cancel: &AtomicBool,
-    ) -> Result<(), DomElementTaskRuntimeError> {
-        self.with_hosted_state(dom, |state| {
-            if !state.window_agents.is_only(&self.event_loop) {
-                return Err(DomElementTaskRuntimeError::Hosted(
-                    DomHostedRuntimeError::CheckpointUnavailable,
-                ));
-            }
+    ) -> Result<Option<NativeSlotCheckpoint>, DomElementTaskRuntimeError> {
+        let owner = self
+            .state
+            .upgrade()
+            .ok_or(DomElementTaskRuntimeError::Hosted(
+                DomHostedRuntimeError::OwnerDisposed,
+            ))?;
+        let mut state = owner
+            .try_borrow_mut()
+            .map_err(|_| DomElementTaskRuntimeError::Hosted(DomHostedRuntimeError::Busy))?;
+        state
+            .qualify(dom)
+            .map_err(DomElementTaskRuntimeError::Hosted)?;
+        if !state.window_agents.is_only(&self.event_loop)
+            || state.slot_checkpoint_active
+            || dom.raw().has_pending_media_removals()
+        {
+            return Err(DomElementTaskRuntimeError::Hosted(
+                DomHostedRuntimeError::CheckpointUnavailable,
+            ));
+        }
+        {
             let snapshot = dom.snapshot();
             for &target in snapshot.pending_slot_signals() {
-                self.slot_realm(state, &snapshot, target, cancel)?;
+                self.slot_realm(&mut state, &snapshot, target, cancel)?;
             }
-            Ok(())
-        })
+        }
+        let batch = dispatcher
+            .take_slot_checkpoint(dom, output_limit, cancel)
+            .map_err(DomElementTaskRuntimeError::Dispatch)?;
+        state.slot_checkpoint_active = batch.is_some();
+        Ok(batch)
     }
 
     fn with_hosted_state<T>(
@@ -169,8 +219,18 @@ impl NativeTaskRunning {
         cancel: &AtomicBool,
     ) -> Result<bool, DomElementTaskRuntimeError> {
         self.with_hosted_state(dom, |state| {
-            match slot_node(state, &dom.snapshot(), target, cancel) {
-                Ok(_) => Ok(true),
+            let snapshot = dom.snapshot();
+            match slot_node(state, &snapshot, target, cancel) {
+                Ok(node) => {
+                    if let Some(document) = node.owner_document()
+                        && let Some(global) = slot_node(state, &snapshot, document.node(), cancel)?
+                            .relevant_global()
+                            .map_err(|error| DomElementTaskRuntimeError::Hosted(error.into()))?
+                    {
+                        self.slot_agent_origin(state, global, cancel)?;
+                    }
+                    Ok(true)
+                }
                 Err(DomElementTaskRuntimeError::Dom(DomError::StaleNode)) => Ok(false),
                 Err(error) => Err(error),
             }
@@ -207,6 +267,15 @@ impl NativeTaskRunning {
             .ok_or(DomElementTaskRuntimeError::Hosted(
                 DomHostedRuntimeError::CheckpointUnavailable,
             ))?;
+        Ok((global, self.slot_agent_origin(state, global, cancel)?))
+    }
+
+    fn slot_agent_origin(
+        &self,
+        state: &mut HostedState,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<clock::CoarsenedSample, DomElementTaskRuntimeError> {
         let (h, t, c, g) = state
             .find_global(global, cancel, |_| Ok(()))
             .map_err(DomElementTaskRuntimeError::Hosted)?;
@@ -223,7 +292,7 @@ impl NativeTaskRunning {
                 DomHostedRuntimeError::CheckpointUnavailable,
             ));
         }
-        Ok((global, agent.globals[g].settings.navigation_start))
+        Ok(agent.globals[g].settings.navigation_start)
     }
 }
 

@@ -75,6 +75,10 @@ mutation notification marker captures the current signal set as historical
 slotchange intentions (`bubbles=true`, `composed=false`, `cancelable=false`).
 The turn yields its [child-list observer deliveries](child-list-observation.md)
 before yielding the captured Slot signals.
+`Dom::take_native_slot_checkpoint` can transfer only the exact target list from
+a ready Slot-only turn. A preceding Select or a pending or captured observer
+turn stays with the ordinary checkpoint driver. The returned list owns only
+the ordered node identities.
 A failed/cancelled drain preserves the set. Native destroy removes exact retired
 pending recipients with `SlotSignalCancelled { reason: Destroyed }` evidence;
 detach/adopt/disconnect do not cancel. Drained batches retain their historical

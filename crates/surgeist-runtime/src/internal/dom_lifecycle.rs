@@ -461,6 +461,7 @@ pub(crate) struct HostedState {
     limits: DomHostedRuntimeLimits,
     hosts: Vec<records::Host>,
     window_agents: records::WindowAgentHistory,
+    slot_checkpoint_active: bool,
     focus: focus::FocusState,
     work: u64,
     creation: Option<Creation>,
@@ -504,6 +505,7 @@ impl HostedOwner {
                 limits,
                 hosts: Vec::new(),
                 window_agents: records::WindowAgentHistory::default(),
+                slot_checkpoint_active: false,
                 focus: focus::FocusState::new(focus_header),
                 work: 0,
                 creation: None,
@@ -518,6 +520,13 @@ impl HostedOwner {
             state: Rc::downgrade(&self.state),
             event_storage: self.event_storage.clone(),
         }
+    }
+
+    pub(crate) fn has_active_slot_checkpoint(&self) -> Result<bool, DomHostedRuntimeError> {
+        self.state
+            .try_borrow()
+            .map(|state| state.slot_checkpoint_active)
+            .map_err(|_| DomHostedRuntimeError::Busy)
     }
 }
 
