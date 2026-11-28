@@ -158,6 +158,40 @@ impl TreeRootBank {
     }
 }
 
+/// What the questions about roots have done on this thread since the last [`counts::reset`], for
+/// the tests that compare the answers of whole parses with a full climb.
+#[cfg(test)]
+pub(super) mod counts {
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy, Default, Debug, Eq, PartialEq)]
+    pub(in super::super) struct Counts {
+        /// Roots asked for with the cache filled by the climb.
+        pub(in super::super) queries: u64,
+        /// Cached answers compared with a full climb along the parent edges.
+        pub(in super::super) verified: u64,
+        /// Announced changes of a record with no children, of a move inside one tree, and of a
+        /// move that may change the root of the records below it.
+        pub(in super::super) bare: u64,
+        pub(in super::super) same: u64,
+        pub(in super::super) cross: u64,
+    }
+    thread_local! {
+        static COUNTS: Cell<Counts> = const { Cell::new(Counts { queries: 0, verified: 0, bare: 0, same: 0, cross: 0 }) };
+    }
+    pub(in super::super) fn reset() {
+        COUNTS.set(Counts::default());
+    }
+    pub(in super::super) fn read() -> Counts {
+        COUNTS.get()
+    }
+    pub(super) fn note(change: impl FnOnce(&mut Counts)) {
+        let mut counts = COUNTS.get();
+        change(&mut counts);
+        COUNTS.set(counts);
+    }
+}
+
 /// What a topology change does to the cached roots, decided before it is
 /// committed and finished after.
 #[derive(Clone, Copy)]
@@ -200,6 +234,8 @@ impl PayloadStorage {
                     .parent()
                     .is_none()
                 {
+                    #[cfg(test)]
+                    counts::note(|counts| counts.verified += 1);
                     #[cfg(test)]
                     assert_eq!(
                         Some(root),
@@ -254,6 +290,8 @@ impl PayloadStorage {
         storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<usize, SessionError> {
+        #[cfg(test)]
+        counts::note(|counts| counts.queries += 1);
         let (root, stop) = self.climb_to_root(control, storage, node)?;
         let (Some(stamp), Some(cell_root), TreeRootBank::Building { .. }) =
             (self.tree_stamp, joined_cell(root).ok(), &self.tree_roots)
@@ -328,6 +366,8 @@ impl SessionStorage {
         if bare {
             control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             self.payloads.forget_tree_root(node);
+            #[cfg(test)]
+            counts::note(|counts| counts.bare += 1);
             return Ok(Reroot::Bare(node));
         }
         if let Some(destination) = destination {
@@ -335,12 +375,16 @@ impl SessionStorage {
             let below = self.payloads.tree_root(control, storage, destination)?;
             let moved = self.payloads.tree_root(control, storage, node)?;
             if below == moved {
+                #[cfg(test)]
+                counts::note(|counts| counts.same += 1);
                 return Ok(Reroot::Same);
             }
         }
         // Charged here so that finishing the change cannot be refused.
         control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         self.payloads.forget_every_tree_root();
+        #[cfg(test)]
+        counts::note(|counts| counts.cross += 1);
         Ok(Reroot::Cross)
     }
     /// Finishes [`Self::begin_reroot`] once the change is committed. It

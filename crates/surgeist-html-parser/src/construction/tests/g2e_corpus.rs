@@ -185,7 +185,7 @@ fn check(report: &crate::HtmlParseReport, label: &str, tally: &mut Tally) {
 /// Sources with the nodes the corpus holds few of: templates inside templates, a template cloned
 /// by a `selectedcontent` element, declarative shadow roots, a clonable one among them, cloned
 /// with its host, and the templates of a table and of a head.
-const SOURCES: [&str; 10] = [
+pub(super) const SOURCES: [&str; 10] = [
     "<!doctype html><template><div><template><i></i></div></template></template>",
     "<!doctype html><template><template><template></template></template></template><p>a",
     "<!doctype html><select><button><selectedcontent></selectedcontent></button>\
