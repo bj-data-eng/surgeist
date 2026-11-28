@@ -258,6 +258,14 @@ state and invocation custody, dispatch events and complete effects before
 acknowledging them. These allocation-free protocols provide no native dispatcher,
 Window, activation storage or live DOM operation.
 
+`HtmlDialogLightDismissCursor` checks the original event's trust and uses
+its target Document and nearest clicked Dialog observation after the popover
+portion. It stores the nullable pointerdown target or clears that target
+before evaluating a pointerup against the last open Dialog. An eligible Dialog
+uses the original close-watcher request with the history-action requirement
+set to false. Native callers own pointer ingress, flat-tree and geometry
+observations, canonical state and dispatch.
+
 `HtmlStyleUpdateCursor` owns the ordered remove/guard/CSP/create/blocking
 steps. Consumers acknowledge actual owner actions after completion; the cursor
 executes no CSSOM mutation or CSP interpretation. Exact type eligibility and

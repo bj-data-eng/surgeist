@@ -5,9 +5,10 @@
 //! Synchronous dispatch, focus, watchers, popover algorithms and layer services
 //! remain real requirements. This producer grants no hosted Document capability.
 //! The bounded operations are nonmodal show, close, insertion/removal and open
-//! changes, and standard null-source requestClose/showModal. Light-dismiss
-//! execution remains separate.
+//! changes, and standard null-source requestClose/showModal. The light-dismiss
+//! sequence consumes the original pointer and nearest-Dialog observations.
 pub(crate) mod focusing;
+pub(crate) mod light_dismiss;
 pub(crate) mod request;
 use crate::{
     internal::attributes::HtmlClosedBy, internal::attributes::HtmlClosedByState,
