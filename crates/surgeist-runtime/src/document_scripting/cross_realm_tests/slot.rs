@@ -485,3 +485,56 @@ pub(super) fn slot_members_read_the_canonical_named_assignment() {
         Ok(())
     }).unwrap();
 }
+
+#[test]
+fn assigned_slot_events_take_their_original_guest_microtask_position() {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (session, target) = hosted_session(&cancel, 0);
+    let mut host = attach_public_nodes(session, target, cancel, 200_000, 2_000_000);
+    let permit = host.permit().unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(
+            scope,
+            r#"
+            (() => {
+                const host = document.createElement('div');
+                (document.documentElement || document).appendChild(host);
+                const root = host.attachShadow({mode: 'open'});
+                const slot = root.appendChild(document.createElement('slot'));
+                const first = document.createTextNode('first');
+                const second = document.createTextNode('second');
+                globalThis.slotTimeline = [];
+                root.addEventListener('slotchange', e => {
+                    const valid = e.isTrusted && e.bubbles && !e.cancelable && !e.composed
+                        && e.target === slot && e.currentTarget === root
+                        && e instanceof Event;
+                    slotTimeline.push(valid ? 'slot:' + slot.assignedNodes().length : 'invalid event');
+                    if (slot.assignedNodes().length === 2) host.removeChild(first);
+                });
+                host.addEventListener('slotchange', () => slotTimeline.push('escaped'));
+                Promise.resolve().then(() => slotTimeline.push('before'));
+                host.appendChild(first);
+                Promise.resolve().then(() => slotTimeline.push('after'));
+                host.appendChild(second);
+                return slotTimeline.length === 0 && slot.assignedNodes().length === 2 ? 'ok' : 'eager callback';
+            })()
+            "#,
+        )?;
+        assert_eq!(String::from_utf16_lossy(&scope.to_utf16(&result)?), "ok");
+        Ok(())
+    })
+    .unwrap();
+    let pending = host.snapshot().unwrap();
+    assert_eq!(pending.pending_slot_signals().len(), 1);
+    host.checkpoint().unwrap();
+    host.in_document(&permit, |scope| {
+        let result = evaluate(scope, "slotTimeline.join(',')")?;
+        assert_eq!(
+            String::from_utf16_lossy(&scope.to_utf16(&result)?),
+            "before,slot:2,after,slot:1",
+        );
+        Ok(())
+    })
+    .unwrap();
+    assert!(host.snapshot().unwrap().pending_slot_signals().is_empty());
+}
