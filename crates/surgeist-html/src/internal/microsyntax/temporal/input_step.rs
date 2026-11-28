@@ -58,11 +58,27 @@ pub trait HtmlInputTemporalStepMeter {
     /// Checks cancellation and admits a checked logical work bound.
     fn work(&mut self, units: usize) -> Result<(), Self::Stop>;
 
-    /// Admits the simultaneous envelope before an allocation is attempted.
-    fn reserve(&mut self, bytes: usize, utf16_units: usize) -> Result<(), Self::Stop>;
+    /// Admits the requested extent before allocation. Scratch records count
+    /// temporary Vec cells and exclude scalar values and returned output.
+    fn reserve(
+        &mut self,
+        bytes: usize,
+        utf16_units: usize,
+        scratch_records: usize,
+    ) -> Result<(), Self::Stop>;
+
+    /// Records actual byte and scratch backing, even when materialization fails.
+    /// The converter releases observed scratch backing on both success and refusal.
+    /// Implementations with cumulative limits must account for this before the
+    /// next reservation. Live reservation ownership is unchanged.
+    fn observe_allocation(
+        &mut self,
+        bytes: usize,
+        scratch_records: usize,
+    ) -> Result<(), Self::Stop>;
 
     /// Releases storage within the originally admitted extent.
-    fn release(&mut self, bytes: usize, utf16_units: usize);
+    fn release(&mut self, bytes: usize, utf16_units: usize, scratch_records: usize);
 }
 
 /// A temporal Input operation could not reach its result.
@@ -138,6 +154,7 @@ type Integer = HtmlNonNegativeInteger;
 struct Storage {
     bytes: usize,
     units: usize,
+    scratch_records: usize,
 }
 
 struct Owned<T> {
@@ -181,7 +198,7 @@ impl<M: HtmlInputTemporalStepMeter> Session<'_, M> {
             .map_err(HtmlInputTemporalStepError::Admission)
     }
 
-    fn reserve(&mut self, bytes: usize, units: usize) -> StepResult<(), M> {
+    fn reserve(&mut self, bytes: usize, units: usize, scratch_records: usize) -> StepResult<(), M> {
         let required = self
             .live
             .bytes
@@ -202,35 +219,44 @@ impl<M: HtmlInputTemporalStepMeter> Session<'_, M> {
             .ok_or(HtmlInputTemporalStepError::Representation)?;
         if bytes != 0 {
             self.meter
-                .reserve(bytes, units)
+                .reserve(bytes, units, scratch_records)
                 .map_err(HtmlInputTemporalStepError::Admission)?;
-            self.live = Storage {
-                bytes: required,
-                units: live_units,
-            };
+            self.live.bytes = required;
+            self.live.units = live_units;
         }
         Ok(())
     }
 
-    fn release(&mut self, bytes: usize, units: usize) {
-        if bytes != 0 {
-            self.meter.release(bytes, units);
+    fn release(&mut self, bytes: usize, units: usize, scratch_records: usize) {
+        if bytes != 0 || scratch_records != 0 {
+            self.meter.release(bytes, units, scratch_records);
             self.live.bytes -= bytes;
             self.live.units -= units;
+            self.live.scratch_records -= scratch_records;
         }
     }
 
     fn discard<T>(&mut self, owned: Owned<T>) {
         let storage = owned.storage;
         drop(owned);
-        self.release(storage.bytes, storage.units);
+        self.release(storage.bytes, storage.units, storage.scratch_records);
     }
 
-    fn observe(&mut self, bytes: usize) -> StepResult<(), M> {
+    fn observe(&mut self, bytes: usize, scratch_records: usize) -> StepResult<(), M> {
         self.observed = self
             .observed
             .checked_add(bytes)
             .ok_or(HtmlInputTemporalStepError::Representation)?;
+        self.live.scratch_records = self
+            .live
+            .scratch_records
+            .checked_add(scratch_records)
+            .ok_or(HtmlInputTemporalStepError::Representation)?;
+        if bytes != 0 || scratch_records != 0 {
+            self.meter
+                .observe_allocation(bytes, scratch_records)
+                .map_err(HtmlInputTemporalStepError::Admission)?;
+        }
         Ok(())
     }
 
@@ -245,37 +271,44 @@ impl<M: HtmlInputTemporalStepMeter> Session<'_, M> {
     ) -> StepResult<Owned<T>, M> {
         self.work(work)?;
         let bytes = bytes.ok_or(HtmlInputTemporalStepError::Representation)?;
-        self.reserve(bytes, 0)?;
+        self.reserve(bytes, 0, 0)?;
         let (value, actual) = match make(bytes) {
             Ok(materialized) => materialized.into_parts(),
             Err(failure) => {
-                self.observe(failure.capacity_bytes())?;
+                self.observe(failure.capacity_bytes(), 0)?;
                 return Err(HtmlInputTemporalStepError::Materialization(failure.kind()));
             }
         };
-        self.observe(actual)?;
-        self.release(bytes - actual, 0);
+        self.observe(actual, 0)?;
+        self.release(bytes - actual, 0, 0);
         Ok(Owned {
             value,
             storage: Storage {
                 bytes: actual,
                 units: 0,
+                scratch_records: 0,
             },
         })
     }
 
-    fn buffer<T>(&mut self, count: usize, utf16: bool) -> StepResult<Owned<Vec<T>>, M> {
+    fn buffer<T>(
+        &mut self,
+        count: usize,
+        utf16: bool,
+        transient: bool,
+    ) -> StepResult<Owned<Vec<T>>, M> {
         let bytes = count
             .checked_mul(size_of::<T>())
             .filter(|&bytes| bytes <= isize::MAX as usize)
             .ok_or(HtmlInputTemporalStepError::Representation)?;
         self.work(bytes.checked_add(1))?;
         let units = if utf16 { count } else { 0 };
-        self.reserve(bytes, units)?;
+        self.reserve(bytes, units, if transient { count } else { 0 })?;
         let mut buffer = Vec::new();
         let allocation = buffer.try_reserve_exact(count);
         let actual = buffer.capacity() * size_of::<T>();
-        self.observe(actual)?;
+        let scratch_records = if transient { buffer.capacity() } else { 0 };
+        self.observe(actual, scratch_records)?;
         allocation.map_err(|_| {
             boundary(HtmlIntegerUnitStepError::AllocationFailed { requested: bytes })
         })?;
@@ -293,6 +326,7 @@ impl<M: HtmlInputTemporalStepMeter> Session<'_, M> {
             storage: Storage {
                 bytes: actual,
                 units,
+                scratch_records,
             },
         })
     }
@@ -320,6 +354,7 @@ fn run<M: HtmlInputTemporalStepMeter, T>(
     session.release(
         session.live.bytes - retained.bytes,
         session.live.units - retained.units,
+        session.live.scratch_records - retained.scratch_records,
     );
     HtmlInputTemporalStepOutcome {
         result,
@@ -424,7 +459,7 @@ fn digit_units<M: HtmlInputTemporalStepMeter>(
     cells: &[u8],
     meter: &mut Session<'_, M>,
 ) -> StepResult<Owned<Vec<u16>>, M> {
-    let mut buffer = meter.buffer(cells.len().max(1), true)?;
+    let mut buffer = meter.buffer(cells.len().max(1), true, true)?;
     meter.work(cells.len().checked_add(1))?;
     if cells.is_empty() {
         buffer.value.push(u16::from(b'0'));
@@ -452,7 +487,7 @@ fn difference<M: HtmlInputTemporalStepMeter>(
             break ordering;
         }
     };
-    let mut scratch = meter.buffer(comparison.difference_capacity(), false)?;
+    let mut scratch = meter.buffer(comparison.difference_capacity(), false, true)?;
     {
         let mut diff =
             HtmlNaturalComparison::take_difference(&mut Some(comparison), &mut scratch.value)
@@ -574,7 +609,7 @@ fn decimal<M: HtmlInputTemporalStepMeter>(
         return Ok(whole.map(|integer| HtmlSignedDecimal::from_magnitude(integer.into(), negative)));
     }
     let integer_len = width(&whole.value);
-    let mut units = meter.buffer(integer_len, true)?;
+    let mut units = meter.buffer(integer_len, true, true)?;
     meter.work(integer_len.checked_add(1))?;
     units
         .value
@@ -627,7 +662,7 @@ fn timestamp<M: HtmlInputTemporalStepMeter>(
         return decimal(whole, &[], true, meter);
     }
     whole -= 1;
-    let mut fraction = meter.buffer(end, true)?;
+    let mut fraction = meter.buffer(end, true, true)?;
     meter.work(end.checked_add(1))?;
     for (index, &digit) in clock.fraction[..end].iter().enumerate() {
         fraction
@@ -797,7 +832,7 @@ fn emit<M: HtmlInputTemporalStepMeter>(
     let length = year_len
         .checked_add(suffix.len)
         .ok_or(HtmlInputTemporalStepError::Representation)?;
-    let mut output = meter.buffer(length, true)?;
+    let mut output = meter.buffer(length, true, false)?;
     meter.work(length.checked_add(1))?;
     if let Some(digits) = digits {
         output.value.extend(std::iter::repeat_n(
@@ -951,14 +986,18 @@ mod tests {
             self.action()
         }
 
-        fn reserve(&mut self, bytes: usize, units: usize) -> Result<(), usize> {
+        fn reserve(&mut self, bytes: usize, units: usize, _: usize) -> Result<(), usize> {
             self.action()?;
             self.live.0 += bytes;
             self.live.1 += units;
             Ok(())
         }
 
-        fn release(&mut self, bytes: usize, units: usize) {
+        fn observe_allocation(&mut self, _: usize, _: usize) -> Result<(), usize> {
+            Ok(())
+        }
+
+        fn release(&mut self, bytes: usize, units: usize, _: usize) {
             self.live.0 -= bytes;
             self.live.1 -= units;
         }
@@ -998,7 +1037,7 @@ mod tests {
             assert_eq!(meter.live, retained);
             assert_eq!(retained.1, 0);
             drop(coordinate);
-            meter.release(retained.0, retained.1);
+            meter.release(retained.0, retained.1, 0);
             assert_eq!(meter.live, (0, 0));
         }
     }
@@ -1024,7 +1063,7 @@ mod tests {
         assert!(value.is_ok());
         let reached = meter.reached;
         drop(value);
-        meter.release(retained.0, retained.1);
+        meter.release(retained.0, retained.1, 0);
         for refuse_at in 1..=reached {
             let mut meter = TestMeter {
                 refuse_at: Some(refuse_at),
@@ -1078,7 +1117,7 @@ mod tests {
         assert_eq!(observed, 8);
         assert_eq!(retained, (8, 0));
         assert_eq!(meter.live, retained);
-        meter.release(retained.0, retained.1);
+        meter.release(retained.0, retained.1, 0);
     }
 
     fn exact(text: &str) -> HtmlSignedDecimal {
@@ -1172,7 +1211,7 @@ mod tests {
             );
             assert_eq!(meter.live, retained);
             drop(units);
-            meter.release(retained.0, retained.1);
+            meter.release(retained.0, retained.1, 0);
             assert_eq!(meter.live, (0, 0));
         }
     }
@@ -1185,7 +1224,7 @@ mod tests {
             serialize(HtmlInputType::LocalDateTime, coordinate, &mut meter).into_parts();
         assert!(value.is_ok());
         drop(value);
-        meter.release(retained.0, retained.1);
+        meter.release(retained.0, retained.1, 0);
         for refuse_at in 1..=meter.reached {
             let mut meter = TestMeter {
                 refuse_at: Some(refuse_at),

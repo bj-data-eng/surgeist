@@ -1785,6 +1785,14 @@ components, including years and fractional seconds. An unavailable current value
 is missing evidence when a bound could affect the result. This observation is
 independent of step mismatch, UI bad input, and candidacy.
 
+`InputStepMismatch` tests exact membership using an applicable Input's current
+value, allowed step, and authored step base. A recovered `min` supplies the
+base, followed by a recovered `value` attribute and then the state default.
+`any` establishes no mismatch. Number and Range compare finite binary64
+values as exact dyadic numbers. Temporal states compare exact coordinates
+with a scaled step. Range limits and adjustment direction do not enter
+this membership check.
+
 `InputEmailTypeMismatch` evaluates the same capture's exact current Email
 value, using the single-address or list grammar selected by `multiple`.
 The empty current value has no mismatch. A comma in a nonempty list requires

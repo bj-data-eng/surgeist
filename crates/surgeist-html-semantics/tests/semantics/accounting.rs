@@ -837,3 +837,107 @@ fn input_range_numeric_recovery_reports_the_rejecting_host_byte_cap() {
     assert_eq!(actual.usage(), expected.usage());
     assert_eq!(session.query(&[]).unwrap_err(), actual);
 }
+
+#[test]
+fn temporal_step_validation_reports_actual_host_byte_and_scratch_limits() {
+    use surgeist_html_semantics::{
+        HtmlControlCurrentValue, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
+        HtmlSemanticContext, HtmlSemanticContextInput,
+    };
+    let (mut b, document) = builder();
+    let input = b
+        .add_element(
+            &document,
+            QualifiedName::new(Namespace::html(), None, "input"),
+            OrderedAttributes::new([Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "type"),
+                "time",
+            )])
+            .unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let capture = b.finish().unwrap();
+    let subject = capture.subject_id(&input).unwrap();
+    let host_revision = capture.host_facts_revision().clone();
+    let facts = HtmlLanguageDirectionFacts::new(
+        &capture,
+        host_revision.clone(),
+        vec![],
+        vec![HtmlControlCurrentValue::new(
+            subject.clone(),
+            Some("00:00:00.3751".into()),
+        )],
+        vec![],
+        HtmlLanguageDirectionLimits::new(100, 0, 1000, 100000),
+    )
+    .unwrap();
+    let cx = HtmlSemanticContext::new(
+        &capture,
+        host_revision,
+        HtmlSemanticContextInput::new(vec![]).with_language_direction(facts),
+        0,
+    )
+    .unwrap();
+    let requests = [HtmlSemanticRequest::new(
+        subject,
+        HtmlSemanticQuery::InputStepMismatch,
+    )];
+    let output = crate::semantics::support::result_record_bytes();
+    for (resource, semantic_resource, cap, required) in [
+        (
+            HtmlResource::AllocatedBytes,
+            HtmlSemanticResource::AllocatedBytes,
+            output + 3,
+            output + 9,
+        ),
+        (
+            HtmlResource::ScratchRecords,
+            HtmlSemanticResource::ScratchRecords,
+            2,
+            3,
+        ),
+    ] {
+        let (scratch, bytes) = if resource == HtmlResource::ScratchRecords {
+            (cap, 10_000_000)
+        } else {
+            (1_000, cap)
+        };
+        let limits = HtmlSemanticLimits::new(100_000_000, 100, scratch, 10_000, bytes, 1_000_000);
+        let expected = private(&capture, &cx, limits).query(&requests).unwrap_err();
+        assert_eq!(
+            expected.kind(),
+            &HtmlSemanticFailureKind::LimitExceeded {
+                resource: semantic_resource,
+                limit: cap,
+                required,
+            }
+        );
+        assert_eq!(expected.usage().allocated_bytes(), output + 3);
+        assert_eq!(expected.usage().peak_scratch_records(), 0);
+
+        let (ledger, root) = host(
+            HtmlLimits::from_fn(
+                |_| u64::MAX,
+                |candidate| {
+                    if candidate == resource {
+                        cap as u64
+                    } else {
+                        u64::MAX
+                    }
+                },
+            ),
+            8,
+        );
+        let child = ledger
+            .child(root, "tenant", HtmlLimits::unlimited(), aggregate_tariffs())
+            .unwrap();
+        let hosted = HtmlHostScope::new(ledger, child);
+        let mut session = open(&capture, &cx, time_limits(10_000_000), &hosted).unwrap();
+        let actual = session.query(&requests).unwrap_err();
+        assert_eq!(actual.kind(), expected.kind());
+        assert_eq!(actual.usage(), expected.usage());
+        assert_eq!(session.query(&[]).unwrap_err(), actual);
+    }
+}

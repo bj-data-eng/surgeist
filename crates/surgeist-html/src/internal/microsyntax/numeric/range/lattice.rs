@@ -5,9 +5,11 @@
 //! occurs here. Mantissa congruences are evaluated in each representability
 //! band; the only multiplication is bounded u64 x u64 -> u128.
 
+use super::super::HtmlFloatingPointNumber;
 use super::{
     HtmlRangeNumericError, HtmlRangeNumericLayout, HtmlRangeNumericReply, HtmlRangeNumericRequest,
 };
+use crate::internal::elements::input_step::HtmlInputStepError;
 
 const FRACTION: u64 = (1_u64 << 52) - 1;
 const HIDDEN: u64 = 1_u64 << 52;
@@ -50,6 +52,78 @@ impl Dyadic {
             negative: self.negative,
         }
     }
+}
+
+fn product_mod(a: u64, b: u64, modulus: u64) -> u64 {
+    ((u128::from(a) * u128::from(b)) % u128::from(modulus)) as u64
+}
+
+/// Tests exact dyadic membership for Number and Range with a positive allowed step.
+/// Each reached residue iteration is admitted before it runs.
+///
+/// # Errors
+/// Refuses a nonpositive step or returns the caller's original work refusal.
+pub fn input_binary64_step_mismatch_with<E>(
+    current: HtmlFloatingPointNumber,
+    base: HtmlFloatingPointNumber,
+    step: HtmlFloatingPointNumber,
+    mut tick: impl FnMut() -> Result<(), E>,
+) -> Result<bool, HtmlInputStepError<E>> {
+    tick().map_err(HtmlInputStepError::Work)?;
+    if step.value() <= 0.0 {
+        return Err(HtmlInputStepError::NonPositiveStep);
+    }
+    let current = Dyadic::from_bits(current.value().to_bits()).odd();
+    let base = Dyadic::from_bits(base.value().to_bits()).odd();
+    let step = Dyadic::from_bits(step.value().to_bits()).odd();
+    let below_step = |term: Dyadic| term.magnitude != 0 && term.exponent < step.exponent;
+    if below_step(current) || below_step(base) {
+        // An odd coefficient at the lower exponent cannot cancel unless both
+        // nonzero terms have that same normalized exponent.
+        if !(below_step(current) && below_step(base) && current.exponent == base.exponent) {
+            return Ok(true);
+        }
+        let signed = |term: Dyadic| {
+            let magnitude = term.magnitude as i64;
+            if term.negative { -magnitude } else { magnitude }
+        };
+        let difference = (signed(current) - signed(base)).unsigned_abs();
+        let places = (step.exponent - current.exponent) as u32;
+        // The two mantissas are at most 53 bits each. A zero difference is
+        // always divisible, including when the binary exponent gap is large.
+        return Ok(difference != 0
+            && (difference.trailing_zeros() < places
+                || !difference.is_multiple_of(step.magnitude)));
+    }
+    Ok(step_residue(current, step, &mut tick)? != step_residue(base, step, &mut tick)?)
+}
+
+fn step_residue<E>(
+    term: Dyadic,
+    step: Dyadic,
+    tick: &mut impl FnMut() -> Result<(), E>,
+) -> Result<u64, HtmlInputStepError<E>> {
+    tick().map_err(HtmlInputStepError::Work)?;
+    if term.magnitude == 0 || step.magnitude == 1 {
+        return Ok(0);
+    }
+    let modulus = step.magnitude;
+    let mut exponent = (term.exponent - step.exponent) as u16;
+    let mut residue = term.magnitude % modulus;
+    let mut power = 2;
+    while exponent != 0 {
+        tick().map_err(HtmlInputStepError::Work)?;
+        if exponent & 1 != 0 {
+            residue = product_mod(residue, power, modulus);
+        }
+        exponent >>= 1;
+        power = product_mod(power, power, modulus);
+    }
+    Ok(if term.negative && residue != 0 {
+        modulus - residue
+    } else {
+        residue
+    })
 }
 
 /// Exact signed sum of the two finite endpoints followed by division by two
@@ -378,34 +452,27 @@ impl HtmlRangeLatticeCursor {
         Ok(())
     }
 
-    fn product_mod(a: u64, b: u64, modulus: u64) -> u64 {
-        ((u128::from(a) * u128::from(b)) % u128::from(modulus)) as u64
-    }
-
     fn advance(&mut self) -> Result<(), HtmlRangeNumericError> {
         match self.phase {
             Phase::BasePower => {
                 if self.power_exponent != 0 {
                     if self.power_exponent & 1 != 0 {
-                        self.power_value = Self::product_mod(
-                            self.power_value,
-                            self.power_base,
-                            self.step.magnitude,
-                        );
+                        self.power_value =
+                            product_mod(self.power_value, self.power_base, self.step.magnitude);
                     }
                     self.power_base =
-                        Self::product_mod(self.power_base, self.power_base, self.step.magnitude);
+                        product_mod(self.power_base, self.power_base, self.step.magnitude);
                     self.power_exponent >>= 1;
                 } else {
                     self.base_mod =
-                        Self::product_mod(self.base_mod, self.power_value, self.step.magnitude);
+                        product_mod(self.base_mod, self.power_value, self.step.magnitude);
                     self.phase = Phase::Band;
                 }
             }
             Phase::Band => self.prepare_band(),
             Phase::Lift => {
                 if self.inverse_exponent < self.exponent {
-                    self.inverse = Self::product_mod(
+                    self.inverse = product_mod(
                         self.inverse,
                         self.step.magnitude.div_ceil(2),
                         self.step.magnitude,
@@ -555,7 +622,7 @@ impl HtmlRangeLatticeCursor {
             }
             self.modulus = self.step.magnitude;
             self.large_modulus = false;
-            self.residue = Self::product_mod(
+            self.residue = product_mod(
                 self.signed_remainder(self.base_mod, self.step.magnitude),
                 self.inverse,
                 self.step.magnitude,

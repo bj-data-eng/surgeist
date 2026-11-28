@@ -5,7 +5,13 @@
 //! keeps the projection exact until the state-specific serialization step.
 
 use crate::internal::microsyntax::numeric::{
-    HtmlNonNegativeDecimal, HtmlSignedDecimal, natural_ratio::HtmlNaturalDigits,
+    HtmlFloatingPointNumber, HtmlNonNegativeDecimal, HtmlSignedDecimal,
+    natural_ratio::HtmlNaturalDigits,
+    range::{
+        HtmlRangeBufferHeader, HtmlRangeNumericHeaders, HtmlRangeNumericReply,
+        HtmlRangeNumericRequest, HtmlRangeScratchRole, expansion::HtmlFiniteDecimalExpansionCursor,
+        finite_dyadic,
+    },
 };
 use std::cmp::Ordering;
 
@@ -177,6 +183,59 @@ impl<'a> HtmlInputStepOperand<'a> {
         })
     }
 
+    fn membership_layout(self, base: Self, step: Self) -> Option<Layout> {
+        let (left, left_scale) = self.extent();
+        let (right, right_scale) = base.extent();
+        let (divisor, divisor_scale) = step.extent();
+        let scale = left_scale.max(right_scale).max(divisor_scale);
+        Some(Layout {
+            // One extra place covers a carry in the difference and the
+            // remainder temporarily shifted one place during division.
+            width: left
+                .max(right)
+                .max(divisor)
+                .checked_add(scale)?
+                .checked_add(1)?,
+            scale,
+        })
+    }
+
+    /// Scratch cells for an exact membership test of this current coordinate.
+    pub fn membership_cells(self, base: Self, step: Self) -> Option<usize> {
+        self.membership_layout(base, step)?.width.checked_mul(2)
+    }
+
+    /// Tests whether this coordinate is off the lattice of the base and allowed step.
+    /// All three operands must already be in the same coordinate unit.
+    ///
+    /// # Errors
+    /// Refuses a nonpositive step, insufficient scratch or the caller's original stop.
+    pub fn step_mismatch_with<E>(
+        self,
+        base: Self,
+        step: Self,
+        scratch: &mut [u8],
+        mut tick: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, HtmlInputStepError<E>> {
+        tick().map_err(HtmlInputStepError::Work)?;
+        if step.negative || step.zero() {
+            return Err(HtmlInputStepError::NonPositiveStep);
+        }
+        let layout = self
+            .membership_layout(base, step)
+            .ok_or(HtmlInputStepError::Workspace)?;
+        let mut lanes = scratch.chunks_exact_mut(layout.width);
+        let gap = lanes.next().ok_or(HtmlInputStepError::Workspace)?;
+        let remainder = lanes.next().ok_or(HtmlInputStepError::Workspace)?;
+        write_sum(
+            self.quantity(layout),
+            base.quantity(layout).negated(),
+            gap,
+            &mut tick,
+        )?;
+        Ok(!write_remainder(gap, step.quantity(layout).digits, remainder, &mut tick)?.is_empty())
+    }
+
     fn extent(self) -> (usize, usize) {
         match self.representation {
             OperandRepr::Decimal(value) => (
@@ -260,6 +319,87 @@ pub struct HtmlInputStepCoordinate<'a> {
 }
 
 impl<'a> HtmlInputStepCoordinate<'a> {
+    /// A finite binary64 coefficient's bounded caller-owned byte workspace.
+    pub fn binary64_cells(value: HtmlFloatingPointNumber) -> usize {
+        let Ok((mantissa, exponent)) = finite_dyadic(value.value().to_bits()) else {
+            // The argument type is finite.
+            return 0;
+        };
+        if mantissa == 0 {
+            return 1;
+        }
+        let zeros = mantissa.trailing_zeros();
+        let digits = (mantissa >> zeros).ilog10() + 1;
+        // Each multiplication by 2 or 5 adds at most one decimal digit.
+        (digits + (exponent + zeros as i32).unsigned_abs()) as usize
+    }
+
+    /// Expands a finite binary64 operand exactly using the Range coefficient cursor.
+    ///
+    /// # Errors
+    /// Returns a refused work charge or a workspace that cannot hold the coefficient.
+    pub fn from_binary64_with<E>(
+        value: HtmlFloatingPointNumber,
+        cells: &mut [u8],
+        mut tick: impl FnMut() -> Result<(), E>,
+    ) -> Result<HtmlInputStepCoordinate<'_>, HtmlInputStepError<E>> {
+        use HtmlRangeNumericReply as Reply;
+        use HtmlRangeNumericRequest as Request;
+        let role = HtmlRangeScratchRole::Coefficient;
+        let mut headers = HtmlRangeNumericHeaders::default();
+        headers.buffers[role.index()] = HtmlRangeBufferHeader::new(0, cells.len())
+            .map_err(|_| HtmlInputStepError::Workspace)?;
+        let mut cursor = HtmlFiniteDecimalExpansionCursor::new(value, headers)
+            .map_err(|_| HtmlInputStepError::Workspace)?;
+        let mut used = 0;
+        while let Some(request) = cursor.request() {
+            tick().map_err(HtmlInputStepError::Work)?;
+            let reply = match request {
+                Request::ScalarStep => Reply::Ack,
+                Request::Reserve {
+                    role: bank,
+                    required_len,
+                } if bank == role && required_len <= cells.len() => Reply::Reserved {
+                    actual_capacity: cells.len(),
+                    actual_len: used,
+                },
+                Request::AppendCell { role: bank, value } if bank == role => {
+                    *cells.get_mut(used).ok_or(HtmlInputStepError::Workspace)? = value;
+                    used += 1;
+                    Reply::Ack
+                }
+                Request::WriteCell { cell, value } if cell.role() == role => {
+                    *cells
+                        .get_mut(..used)
+                        .and_then(|digits| digits.get_mut(cell.index()))
+                        .ok_or(HtmlInputStepError::Workspace)? = value;
+                    Reply::Ack
+                }
+                Request::ReadCells { cells: reads } => {
+                    let live = cells.get(..used).ok_or(HtmlInputStepError::Workspace)?;
+                    Reply::Cells(reads.map(|cell| {
+                        cell.filter(|cell| cell.role() == role)
+                            .and_then(|cell| live.get(cell.index()).copied())
+                    }))
+                }
+                Request::PopCell { role: bank } if bank == role => {
+                    used = used.checked_sub(1).ok_or(HtmlInputStepError::Workspace)?;
+                    Reply::Ack
+                }
+                _ => return Err(HtmlInputStepError::Workspace),
+            };
+            cursor
+                .reply(reply)
+                .map_err(|_| HtmlInputStepError::Workspace)?;
+        }
+        let (negative, scale) = cursor.result().ok_or(HtmlInputStepError::Workspace)?;
+        Ok(HtmlInputStepCoordinate {
+            cells: cells.get(..used).ok_or(HtmlInputStepError::Workspace)?,
+            scale,
+            negative,
+        })
+    }
+
     /// Uses a previously calculated exact coordinate as an operand.
     pub fn operand(self) -> HtmlInputStepOperand<'a> {
         HtmlInputStepOperand {

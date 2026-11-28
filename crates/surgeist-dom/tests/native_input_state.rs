@@ -1444,3 +1444,46 @@ fn input_range_validity_replays_exact_native_values_and_reversed_time_bounds() {
     assert_eq!(validity(&number), (false, true));
     assert_eq!(validity(&gap), (true, true));
 }
+
+#[test]
+fn captured_step_mismatch_distinguishes_number_from_corrected_range_and_held_values() {
+    use surgeist_html_semantics::{HtmlSemanticFact, HtmlSemanticQuery, HtmlSemanticValue};
+    let mut dom = owner();
+    let (document, _, input) = setup(&mut dom);
+    let read = |c: &DomHtmlCapture| fact(c, input, HtmlSemanticQuery::InputStepMismatch);
+    let known = |mismatch| HtmlSemanticFact::InputStepMismatch(HtmlSemanticValue::Known(mismatch));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "number");
+    batch.set_attribute(input, "min", "0");
+    batch.set_attribute(input, "step", "0.1");
+    batch.set_input_value(input, "0.3");
+    apply(&mut dom, batch);
+    let number = capture(&dom.snapshot(), document);
+    assert_eq!(read(&number), known(true));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "range");
+    batch.set_input_value(input, "0.3");
+    apply(&mut dom, batch);
+    let snapshot = dom.snapshot();
+    assert_eq!(value(&snapshot, input), "0.2".into());
+    let range = capture(&snapshot, document);
+    assert_eq!(read(&range), known(false));
+
+    let mut batch = DomBatch::new();
+    batch.set_attribute(input, "type", "time");
+    batch.set_attribute(input, "min", "23:00");
+    batch.set_attribute(input, "max", "01:00");
+    batch.set_attribute(input, "step", "5400");
+    batch.set_input_value(input, "00:30");
+    apply(&mut dom, batch);
+    assert_eq!(read(&capture(&dom.snapshot(), document)), known(false));
+
+    let mut batch = DomBatch::new();
+    batch.set_input_value(input, "12:00");
+    apply(&mut dom, batch);
+    assert_eq!(read(&capture(&dom.snapshot(), document)), known(true));
+    assert_eq!(read(&range), known(false));
+    assert_eq!(read(&number), known(true));
+}
