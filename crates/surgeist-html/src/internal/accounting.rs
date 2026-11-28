@@ -716,10 +716,10 @@ impl HtmlCapScope {
             }
             Self::ElementReferenceFacts
             | Self::ControlFacts
-            | Self::GlobalInheritance
             | Self::InertFacts
             | Self::ContextFacts => &[HtmlResource::FactRecords],
             Self::MediaFacts
+            | Self::GlobalInheritance
             | Self::LinkRelationshipFacts
             | Self::ImageDimensionFacts
             | Self::NaturalDimensionFacts => &[HtmlResource::FactRecords, HtmlResource::FactBytes],

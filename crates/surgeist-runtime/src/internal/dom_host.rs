@@ -223,7 +223,7 @@ impl<State, R, Input> Runtime<State, R, Input> {
     ///
     /// References are validated by their actual owners. Numeric IDs are never
     /// converted between Runtime and DOM. The domain configuration is immutable.
-    /// Document target observations have no Runtime producer and are rejected
+    /// Document target and spellcheck defaults have no Runtime producer and are rejected
     /// before surface/association admission; use the native DOM publisher when
     /// an actual external host supplies that selection.
     pub fn bind_dom_host(
@@ -234,7 +234,10 @@ impl<State, R, Input> Runtime<State, R, Input> {
         domains: DomHostDomains,
         limits: SurfaceDomBindingLimits,
     ) -> Result<RuntimeDomHost, RuntimeDomHostError> {
-        if domains == DomHostDomains::DocumentTarget {
+        if matches!(
+            domains,
+            DomHostDomains::DocumentTarget | DomHostDomains::SpellcheckDefaults
+        ) {
             return Err(RuntimeDomHostError::UnsupportedDomains(domains));
         }
         let current = self
@@ -302,10 +305,8 @@ impl<State, R, Input> Runtime<State, R, Input> {
         }
         let mut work = BindingWork::new(host.limits.validation_work);
         let observations = match host.publisher.domains() {
-            DomHostDomains::DocumentTarget => {
-                return Err(RuntimeDomHostError::UnsupportedDomains(
-                    DomHostDomains::DocumentTarget,
-                ));
+            domains @ (DomHostDomains::DocumentTarget | DomHostDomains::SpellcheckDefaults) => {
+                return Err(RuntimeDomHostError::UnsupportedDomains(domains));
             }
             DomHostDomains::Focus => DomHostObservations::Focus(Observed::Supported(selected(
                 current.focused_element(),

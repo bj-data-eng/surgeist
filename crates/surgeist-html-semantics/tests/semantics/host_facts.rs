@@ -39,6 +39,7 @@ use surgeist_html_semantics::{
     HtmlOutputDefaultLimits, HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey,
     HtmlRelExtensionEffect, HtmlRelFacts, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelProducerId,
     HtmlRelRegistryOccurrence, HtmlRelRegistryStatus, HtmlRelRevision,
+    HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact,
 };
 use surgeist_html_semantics::{HtmlDefaultFeedApplicability, HtmlDefaultFeedInput};
 use surgeist_ledger::{Operation, ProfileMode, SharedOperation};
@@ -461,6 +462,58 @@ fn global_inheritance_facts_charge_the_host_scope() {
         .unwrap();
     });
     assert_eq!(names, below_the_host(HtmlCapScope::GlobalInheritance));
+}
+
+#[test]
+fn hosted_spellcheck_index_refuses_one_byte_short_and_admits_its_exact_backing() {
+    let (capture, elements) = element_page(&[("div", &[])]);
+    // A single row needs one occupied seat and one spare seat so a missing
+    // subject still has a stopping point. Each seat retains one position.
+    let required = (2 * size_of::<usize>()) as u64;
+    for cap in [required - 1, required] {
+        let limits = HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| {
+                if resource == HtmlResource::FactBytes {
+                    cap
+                } else {
+                    u64::MAX
+                }
+            },
+        );
+        let operation =
+            Operation::with_profile("host", limits, 4, ProfileMode::Summary { timing: false })
+                .unwrap();
+        let root = operation.root();
+        let ledger = operation.share();
+        let scope = HtmlHostScope::new(ledger.clone(), root);
+        let result = HtmlGlobalInheritanceFacts::with_accounting(
+            &capture,
+            capture.host_facts_revision().clone(),
+            HtmlGlobalInheritanceRevision::new(HtmlGlobalInheritanceProducerId::fresh(), 1, 2),
+            vec![],
+            vec![HtmlSpellcheckDefaultFact::new(
+                elements[0].clone(),
+                Some(HtmlSpellcheckDefaultBehavior::TrueByDefault),
+            )],
+            HtmlGlobalInheritanceLimits::new(1, 1_000),
+            &scope,
+        );
+        if cap < required {
+            assert!(
+                result.is_err(),
+                "the spellcheck index was formed past its host byte cap"
+            );
+        } else {
+            let facts = result.unwrap();
+            assert_eq!(facts.spellcheck_defaults().len(), 1);
+            let report = ledger.snapshot().unwrap().unwrap();
+            assert_eq!(
+                report.scopes[0].usage.live(HtmlResource::FactBytes),
+                required
+            );
+        }
+    }
 }
 
 #[test]

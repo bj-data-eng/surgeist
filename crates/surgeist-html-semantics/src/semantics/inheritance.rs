@@ -4,10 +4,12 @@
 //! distinct where the selected algorithms require them.
 
 use super::admission::producer_revision;
+mod spellcheck_index;
 use super::index::FactIndex;
 use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use spellcheck_index::SpellcheckIndex;
 use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{
@@ -125,6 +127,8 @@ pub struct HtmlGlobalInheritanceLimits {
     validation_work: usize,
 }
 impl HtmlGlobalInheritanceLimits {
+    /// Bounds the two input vectors and validation work. The spellcheck index
+    /// admits at most four position words per allowed record.
     pub fn new(record_capacity: usize, validation_work: usize) -> Self {
         Self {
             record_capacity,
@@ -151,6 +155,10 @@ pub enum HtmlGlobalInheritanceError {
         limit: usize,
         required: usize,
     },
+    SpellcheckIndexBytes {
+        limit: usize,
+        required: usize,
+    },
     ValidationWork {
         limit: usize,
         required: usize,
@@ -170,6 +178,7 @@ impl HtmlGlobalInheritanceError {
             Self::HostRevisionMismatch
             | Self::RepresentationExhausted
             | Self::RecordCapacity { .. }
+            | Self::SpellcheckIndexBytes { .. }
             | Self::ValidationWork { .. }
             | Self::DuplicateSubject(_)
             | Self::InapplicableSubject(_)
@@ -193,7 +202,7 @@ pub struct HtmlGlobalInheritanceFacts {
     design_modes: Vec<HtmlDocumentDesignModeFact>,
     spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
     design_mode_index: FactIndex,
-    spellcheck_index: FactIndex,
+    spellcheck_index: SpellcheckIndex,
 }
 impl ScanError for HtmlGlobalInheritanceError {
     fn representation_exhausted() -> Self {
@@ -268,7 +277,9 @@ impl HtmlGlobalInheritanceFacts {
             .ok_or(HtmlGlobalInheritanceError::RepresentationExhausted)?;
         let mut validation = ScanMeter::charging(
             HtmlCapScope::GlobalInheritance,
-            Caps::work(limits.validation_work).records(limits.record_capacity),
+            Caps::work(limits.validation_work)
+                .records(limits.record_capacity)
+                .bytes(SpellcheckIndex::byte_ceiling(limits.record_capacity)),
             hosted,
         )?;
         validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
@@ -297,15 +308,8 @@ impl HtmlGlobalInheritanceFacts {
                 ));
             }
         }
-        let mut spellcheck_index = FactIndex::new(
-            capture.identity(),
-            spellcheck_defaults.len(),
-            |n| validation.charge(n),
-            HtmlGlobalInheritanceError::RepresentationExhausted,
-        )?;
-        for (position, fact) in spellcheck_defaults.iter().enumerate() {
-            spellcheck_index.enter(&fact.subject, position);
-        }
+        let mut spellcheck_index =
+            SpellcheckIndex::new(spellcheck_defaults.len(), &mut validation)?;
         for (position, fact) in spellcheck_defaults.iter().enumerate() {
             let node = validation.node(capture, &fact.subject)?;
             validation.charge(1)?;
@@ -319,11 +323,7 @@ impl HtmlGlobalInheritanceFacts {
                     fact.subject.clone(),
                 ));
             }
-            if spellcheck_index.position(&fact.subject) != Some(position) {
-                return Err(HtmlGlobalInheritanceError::DuplicateSubject(
-                    fact.subject.clone(),
-                ));
-            }
+            spellcheck_index.insert(&spellcheck_defaults, position, &mut validation)?;
             validation.charge(1)?;
             if fact.behavior == Some(HtmlSpellcheckDefaultBehavior::InheritByDefault) {
                 validation.charge(1)?;
@@ -663,7 +663,11 @@ impl<'a> HtmlSemanticSession<'a> {
             let mut behavior = None;
             if let Some(facts) = self.context.global_inheritance() {
                 self.charge(1)?;
-                if let Some(position) = facts.spellcheck_index.position(&current) {
+                if let Some(position) = facts.spellcheck_index.position_with(
+                    &facts.spellcheck_defaults,
+                    &current,
+                    || self.charge(1),
+                )? {
                     self.charge(1)?;
                     behavior = facts.spellcheck_defaults[position].behavior();
                 }

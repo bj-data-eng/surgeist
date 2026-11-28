@@ -6,7 +6,8 @@
 //! mapping and shared producers. `DomScriptingCapture` pairs a snapshot with an
 //! owner-sampled scripting fact. `DomHostPublisher` publishes fixed focus, hover or
 //! document-target observations from an external producer against one exact
-//! `identity::DomDocumentStamp`; `DomHostCapture`, `DomHostObservations`,
+//! `identity::DomDocumentStamp`. The bounded spellcheck publication accepts
+//! per-Element defaults for the same exact basis. `DomHostCapture`, `DomHostObservations`,
 //! `DomHostPublication`, `DomHostChange`, `DomHostChanges`, `DomHostChangeCoverage`,
 //! `DomHostDomain`, `DomHostDomains`, `DomHostStamp`, `DomHostSourceId`,
 //! `DomHostRecomputeReason` and `DomHostError` read and describe them (items whose names
@@ -20,7 +21,8 @@
 pub use crate::internal::host::{
     DomHostCapture, DomHostChange, DomHostChangeCoverage, DomHostChanges, DomHostDomain,
     DomHostDomains, DomHostError, DomHostObservations, DomHostPublication, DomHostPublisher,
-    DomHostRecomputeReason, DomHostSourceId, DomHostStamp, HostStateRevision, Observed,
+    DomHostRecomputeReason, DomHostSourceId, DomHostSpellcheckDefaults, DomHostSpellcheckError,
+    DomHostSpellcheckLimits, DomHostStamp, HostStateRevision, Observed,
 };
 pub use crate::internal::semantic::{
     DomHtmlCapture, DomHtmlCaptureError, DomHtmlCaptureLimits, DomHtmlCaptureResource,

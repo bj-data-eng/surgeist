@@ -1,5 +1,9 @@
 //! Fixed-domain external observations qualified by one canonical document.
 
+mod spellcheck;
+
+pub use spellcheck::{DomHostSpellcheckDefaults, DomHostSpellcheckError, DomHostSpellcheckLimits};
+
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -44,10 +48,12 @@ pub enum DomHostDomains {
     FocusAndHover,
     /// Document target Element selection only.
     DocumentTarget,
+    /// Per-Element spellcheck defaults only.
+    SpellcheckDefaults,
 }
 
 /// Complete observations for exactly the domains named by its variant.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DomHostObservations {
     /// One focus-selection observation.
     Focus(Observed<Option<NodeId>>),
@@ -58,6 +64,8 @@ pub enum DomHostObservations {
     /// HTML's target-elements list contains this one Element or is empty:
     /// <https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#selector-target>.
     DocumentTarget(Observed<Option<NodeId>>),
+    /// A finite spellcheck policy validated at its canonical Document basis.
+    SpellcheckDefaults(DomHostSpellcheckDefaults),
     /// Both observations, with independent availability.
     FocusAndHover {
         /// Focus-selection observation.
@@ -74,15 +82,17 @@ impl DomHostObservations {
             Self::Hover(_) => DomHostDomains::Hover,
             Self::FocusAndHover { .. } => DomHostDomains::FocusAndHover,
             Self::DocumentTarget(_) => DomHostDomains::DocumentTarget,
+            Self::SpellcheckDefaults(_) => DomHostDomains::SpellcheckDefaults,
         }
     }
 
-    fn values(self) -> [Option<Observed<Option<NodeId>>>; 3] {
-        match self {
+    fn values(&self) -> [Option<Observed<Option<NodeId>>>; 3] {
+        match *self {
             Self::Focus(focus) => [Some(focus), None, None],
             Self::Hover(hover) => [None, Some(hover), None],
             Self::FocusAndHover { focus, hover } => [Some(focus), Some(hover), None],
             Self::DocumentTarget(target) => [None, None, Some(target)],
+            Self::SpellcheckDefaults(_) => [None, None, None],
         }
     }
 }
@@ -177,14 +187,16 @@ pub enum DomHostChange {
         /// Domain whose availability changed.
         domain: DomHostDomain,
     },
+    /// Recompute the document's external spellcheck defaults.
+    SpellcheckDefaults,
 }
 
-/// Constant-size complete adjacent coverage, ordered focus, hover, then target.
+/// Constant-size adjacent coverage for the publisher's exact configured domains.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomHostChanges {
     from: DomHostStamp,
     to: DomHostStamp,
-    // FocusAndHover is the largest configured group. DocumentTarget is separate.
+    // FocusAndHover contains two ordered domains. Other configurations contain one.
     changes: [Option<DomHostChange>; 2],
 }
 impl DomHostChanges {
@@ -279,9 +291,13 @@ pub enum DomHostError {
     /// This publisher has not published a capture yet.
     Unpublished,
     /// A selected subject is not a current same-document Element.
-    Subject { node: NodeId, error: DomError },
+    Subject {
+        node: NodeId,
+        error: DomError,
+    },
     /// Changed observations cannot advance the external revision.
     HostRevisionExhausted,
+    Spellcheck(DomHostSpellcheckError),
 }
 impl fmt::Display for DomHostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -317,6 +333,7 @@ impl fmt::Display for DomHostError {
             Self::HostRevisionExhausted => {
                 f.write_str("the external revision cannot advance for the changed observations")
             }
+            Self::Spellcheck(error) => error.fmt(f),
         }
     }
 }
@@ -324,6 +341,7 @@ impl std::error::Error for DomHostError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Subject { error, .. } => Some(error),
+            Self::Spellcheck(error) => Some(error),
             Self::ForeignOwner
             | Self::WrongDocument
             | Self::DomRevisionMismatch { .. }
@@ -371,6 +389,7 @@ impl DomHostPublisher {
     }
 
     /// Validates and atomically publishes complete observations for an exact basis.
+    /// Use [`Self::publish_spellcheck_defaults`] to admit variable policy facts.
     ///
     /// A changed observation advances the checked host revision once. DOM-only
     /// changes retain it and emit full recomputation coverage. Equal recaptures
@@ -381,21 +400,11 @@ impl DomHostPublisher {
         observed_basis: DomDocumentStamp,
         observations: DomHostObservations,
     ) -> Result<DomHostPublication, DomHostError> {
-        let basis = document.stamp();
-        validate_basis(observed_basis, basis)?;
-        if let Some(state) = &self.state {
-            validate_document(state.current.stamp.document, basis)?;
-            let current = state.current.stamp.document.store().revision();
-            let actual = basis.store().revision();
-            if actual < current {
-                return Err(DomHostError::StaleDomRevision { current, actual });
-            }
-        }
-        if observations.domains() != self.domains {
-            return Err(DomHostError::DomainMismatch {
-                expected: self.domains,
-                actual: observations.domains(),
-            });
+        let basis = self.validate_publication(document, observed_basis, observations.domains())?;
+        if let DomHostObservations::SpellcheckDefaults(_) = &observations {
+            return Err(DomHostError::Spellcheck(
+                DomHostSpellcheckError::RequiresBoundedPublication,
+            ));
         }
         for value in observations.values().into_iter().flatten() {
             if let Observed::Supported(Some(node)) = value {
@@ -410,11 +419,47 @@ impl DomHostPublisher {
                 }
             }
         }
+        let changed = self
+            .state
+            .as_ref()
+            .is_some_and(|state| state.current.observations != observations);
+        self.record_publication(basis, observations, changed)
+    }
+
+    fn validate_publication(
+        &self,
+        document: DomDocument<'_>,
+        observed_basis: DomDocumentStamp,
+        domains: DomHostDomains,
+    ) -> Result<DomDocumentStamp, DomHostError> {
+        let basis = document.stamp();
+        validate_basis(observed_basis, basis)?;
+        if let Some(state) = &self.state {
+            validate_document(state.current.stamp.document, basis)?;
+            let current = state.current.stamp.document.store().revision();
+            let actual = basis.store().revision();
+            if actual < current {
+                return Err(DomHostError::StaleDomRevision { current, actual });
+            }
+        }
+        if domains != self.domains {
+            return Err(DomHostError::DomainMismatch {
+                expected: self.domains,
+                actual: domains,
+            });
+        }
+        Ok(basis)
+    }
+
+    fn record_publication(
+        &mut self,
+        basis: DomDocumentStamp,
+        observations: DomHostObservations,
+        changed: bool,
+    ) -> Result<DomHostPublication, DomHostError> {
         let revision = match &self.state {
             None => HostStateRevision(0),
-            Some(state) if state.current.observations == observations => {
-                state.current.stamp.host_revision
-            }
+            Some(state) if !changed => state.current.stamp.host_revision,
             Some(state) => HostStateRevision(
                 state
                     .current
@@ -438,10 +483,6 @@ impl DomHostPublisher {
                 changes: empty_changes(&stamp),
             });
         }
-        let capture = DomHostCapture {
-            stamp: stamp.clone(),
-            observations,
-        };
         let previous = self.latest().map(|capture| capture.stamp.clone());
         let changes = match &self.state {
             None => self.fallback(None, &stamp, DomHostRecomputeReason::InitialCapture),
@@ -455,7 +496,7 @@ impl DomHostPublisher {
                 let new = observations.values();
                 DomHostChangeCoverage::Complete(DomHostChanges {
                     from: state.current.stamp.clone(),
-                    to: stamp,
+                    to: stamp.clone(),
                     changes: match self.domains {
                         DomHostDomains::DocumentTarget => [
                             change(
@@ -471,9 +512,16 @@ impl DomHostPublisher {
                             change(DomHostDomain::ElementFocusSelection, old[0], new[0]),
                             change(DomHostDomain::ElementHoverSelection, old[1], new[1]),
                         ],
+                        DomHostDomains::SpellcheckDefaults => {
+                            [Some(DomHostChange::SpellcheckDefaults), None]
+                        }
                     },
                 })
             }
+        };
+        let capture = DomHostCapture {
+            stamp: stamp.clone(),
+            observations,
         };
         self.state = Some(PublisherState {
             current: capture.clone(),
@@ -620,7 +668,7 @@ mod tests {
         let mut publisher = DomHostPublisher::new(DomHostDomains::DocumentTarget);
         let observations = DomHostObservations::DocumentTarget(Observed::Supported(None));
         publisher
-            .publish(document, document.stamp(), observations)
+            .publish(document, document.stamp(), observations.clone())
             .unwrap();
         publisher
             .state
@@ -643,7 +691,7 @@ mod tests {
         assert_eq!(publisher.changes_since(None).unwrap(), coverage);
         assert_eq!(
             publisher
-                .publish(document, document.stamp(), observations)
+                .publish(document, document.stamp(), observations.clone())
                 .unwrap()
                 .capture(),
             &before
@@ -654,7 +702,7 @@ mod tests {
         let snapshot = dom.snapshot();
         let document = snapshot.document(id).unwrap();
         let rebased = publisher
-            .publish(document, document.stamp(), observations)
+            .publish(document, document.stamp(), observations.clone())
             .unwrap();
         assert_eq!(rebased.capture().stamp().host_revision().get(), u64::MAX);
         assert!(matches!(
@@ -711,7 +759,7 @@ mod tests {
             .host_revision = HostStateRevision(u64::MAX);
         let before = publisher.latest().unwrap().clone();
         let equal = publisher
-            .publish(document, document.stamp(), *before.observations())
+            .publish(document, document.stamp(), before.observations().clone())
             .unwrap();
         assert_eq!(equal.capture(), &before);
         let coverage = publisher.changes_since(None).unwrap();
