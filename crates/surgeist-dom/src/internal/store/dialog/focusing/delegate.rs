@@ -199,6 +199,20 @@ impl DelegateFrame {
                 FA::NextDescendant => {
                     FR::DescendantPresent(self.walk.next(draft, cancel)?.is_some())
                 }
+                action @ (FA::ReadSequentiallyFocusable | FA::GetFocusableArea) => {
+                    let node = self.walk.current.ok_or(DomError::InvalidSourceOperation)?;
+                    draft.source_step(cancel)?;
+                    if matches!(&draft.node(node)?.kind(), transaction::KindRead::Element(_)) {
+                        return Ok(None);
+                    }
+                    // An ordinary non-Element descendant is neither a focusable
+                    // area itself nor an Element or navigable that could resolve one.
+                    if action == FA::ReadSequentiallyFocusable {
+                        FR::SequentiallyFocusable(false)
+                    } else {
+                        FR::ResolvedAreaPresent(false)
+                    }
+                }
                 FA::Complete(HtmlFocusDelegateOutcome::Null) => return Ok(Some(false)),
                 FA::Complete(_) => return Err(DomError::InvalidSourceOperation),
                 _ => return Ok(None),
