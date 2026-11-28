@@ -13,14 +13,15 @@ use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlAssociatedElement, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlCommandValidity, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsError,
-    HtmlElementReferenceFactsLimits, HtmlElementReferenceKey, HtmlElementReferenceOrigin,
-    HtmlExplicitElementReference, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlCapturedShadowProperties, HtmlCommandValidity, HtmlControlFactRecords, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlElementReferenceFact, HtmlElementReferenceFacts,
+    HtmlElementReferenceFactsError, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
+    HtmlElementReferenceOrigin, HtmlExplicitElementReference, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession,
+    HtmlSemanticValue,
 };
 
 fn element(
@@ -90,10 +91,10 @@ fn context(
             HtmlControlFacts::new(
                 c,
                 c.host_facts_revision().clone(),
-                associations,
-                vec![],
-                vec![],
-                vec![],
+                HtmlControlFactRecords {
+                    associations,
+                    ..HtmlControlFactRecords::default()
+                },
                 HtmlControlFactsLimits::new(100, 1000000),
             )
             .unwrap(),

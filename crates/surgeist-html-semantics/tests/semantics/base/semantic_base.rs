@@ -9,11 +9,12 @@ use surgeist_html_semantics::{
     HtmlBaseParseOutcome, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme, HtmlCapture,
     HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCapturedBaseDocument, HtmlCapturedBaseFacts, HtmlCapturedFrozenBase, HtmlCapturedIsValue,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlParseBaseFacts, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue, HtmlTargetOrigin,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlParseBaseFacts, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticValue,
+    HtmlTargetOrigin,
 };
 
 #[test]
@@ -655,13 +656,13 @@ fn submission_target_uses_actual_form_owner_and_only_submitter_override() {
         let controls = HtmlControlFacts::new(
             &capture,
             capture.host_facts_revision().clone(),
-            vec![HtmlFormAssociation::new(
-                button.clone(),
-                HtmlFormAssociationState::EstablishedCurrent(owner),
-            )],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations: vec![HtmlFormAssociation::new(
+                    button.clone(),
+                    HtmlFormAssociationState::EstablishedCurrent(owner),
+                )],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(10, 100000),
         )
         .unwrap();

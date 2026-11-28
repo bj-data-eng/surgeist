@@ -10,11 +10,12 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag, HtmlFormAssociation,
-    HtmlFormAssociationState, HtmlInputControlState, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlControlFlag,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlInputControlState, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn element(
@@ -67,15 +68,16 @@ fn context(
     let facts = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        associations,
-        states
-            .iter()
-            .map(|(id, value)| {
-                HtmlInputControlState::new(id.clone(), *value, None, None, Some(true))
-            })
-            .collect(),
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations,
+            inputs: states
+                .iter()
+                .map(|(id, value)| {
+                    HtmlInputControlState::new(id.clone(), *value, None, None, Some(true))
+                })
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

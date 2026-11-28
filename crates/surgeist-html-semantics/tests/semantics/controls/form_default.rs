@@ -9,13 +9,13 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlDefaultButton, HtmlFormAssociation,
-    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlImplicitSubmissionBlockingFields,
-    HtmlImplicitSubmissionCondition, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
-    HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlDefaultButton,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
+    HtmlImplicitSubmissionBlockingFields, HtmlImplicitSubmissionCondition,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -74,13 +74,13 @@ fn context(f: &Fixture, states: Vec<(usize, HtmlFormAssociationState)>) -> HtmlS
     let facts = HtmlControlFacts::new(
         &f.capture,
         f.capture.host_facts_revision().clone(),
-        states
-            .into_iter()
-            .map(|(i, s)| HtmlFormAssociation::new(f.ids[i].clone(), s))
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: states
+                .into_iter()
+                .map(|(i, s)| HtmlFormAssociation::new(f.ids[i].clone(), s))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(100, 1000000),
     )
     .unwrap();

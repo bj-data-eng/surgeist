@@ -8,11 +8,12 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlFormOwnerOrigin, HtmlOptionFormOwner, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlOptionFormOwner, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact,
+    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 fn element(
@@ -58,13 +59,13 @@ fn context(
     let controls = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        associations
-            .iter()
-            .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: associations
+                .iter()
+                .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

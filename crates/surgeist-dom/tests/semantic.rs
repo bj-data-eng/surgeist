@@ -73,6 +73,150 @@ fn query(
 }
 
 #[test]
+fn captured_native_custom_error_tracks_only_the_canonical_message() {
+    use surgeist_dom::{capture::DomSlotSemanticLimits, shadow::DomSlotQueryLimits};
+    use surgeist_html_semantics::{HtmlInertFactLimits, HtmlLanguageDirectionLimits};
+
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let controls = [
+        "button", "fieldset", "input", "output", "select", "textarea",
+    ]
+    .map(|name| batch.create_element_ns(&document, Namespace::html(), name));
+    let other = batch.create_element_ns(&document, Namespace::html(), "div");
+    let foreign = batch.create_element_ns(&document, Namespace::from_uri("urn:test"), "input");
+    let created = apply(&mut dom, batch);
+    let document = created.document(&document).unwrap();
+    let controls = controls.map(|ticket| created.created(&ticket).unwrap().unwrap());
+    let other = created.created(&other).unwrap().unwrap();
+    let foreign = created.created(&foreign).unwrap().unwrap();
+
+    let mut publisher = DomHostPublisher::new(DomHostDomains::Focus);
+    let capture_limits = DomHtmlCaptureLimits::new(64, 1_000_000);
+    let mut capture_at = |snapshot: &DomSnapshot| {
+        let view = snapshot.document(document).unwrap();
+        let host = publisher
+            .publish(
+                view,
+                view.stamp(),
+                DomHostObservations::Focus(Observed::Unsupported),
+            )
+            .unwrap();
+        snapshot
+            .html_capture(
+                document,
+                Some(host.capture()),
+                limits(),
+                capture_limits,
+                &AtomicBool::new(false),
+            )
+            .unwrap()
+    };
+    let original = capture_at(&dom.snapshot());
+    let mut batch = DomBatch::new();
+    for control in controls {
+        batch.set_custom_validity(control, DocumentString::from_utf16(vec![0, 0xd800, 13, 10]));
+    }
+    apply(&mut dom, batch);
+    let changed = capture_at(&dom.snapshot());
+    assert_ne!(original.basis(), changed.basis());
+    assert_eq!(
+        original.host().unwrap().stamp().host_revision(),
+        changed.host().unwrap().stamp().host_revision()
+    );
+
+    let mut batch = DomBatch::new();
+    for control in controls {
+        batch.set_custom_validity(control, "");
+    }
+    apply(&mut dom, batch);
+    let cleared = capture_at(&dom.snapshot());
+    let custom_error = |captured: &DomHtmlCapture, node| {
+        let report = query(captured, node, HtmlSemanticQuery::CustomError);
+        report.results()[0].fact().clone()
+    };
+    for control in controls {
+        assert_eq!(
+            custom_error(&original, control),
+            HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(false))
+        );
+        assert_eq!(
+            custom_error(&changed, control),
+            HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(true))
+        );
+        assert_eq!(
+            custom_error(&cleared, control),
+            HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(false))
+        );
+    }
+    for control in [controls[1], controls[3]] {
+        let report = query(
+            &changed,
+            control,
+            HtmlSemanticQuery::ConstraintValidationCandidate,
+        );
+        assert_eq!(
+            report.results()[0].fact(),
+            &HtmlSemanticFact::ConstraintValidationCandidate(HtmlSemanticValue::Known(false))
+        );
+    }
+    assert_eq!(
+        custom_error(&changed, other),
+        HtmlSemanticFact::CustomError(HtmlSemanticValue::Inapplicable)
+    );
+    assert_eq!(
+        custom_error(&changed, foreign),
+        HtmlSemanticFact::CustomError(HtmlSemanticValue::Unsupported(
+            surgeist_html_semantics::HtmlSemanticUnsupported::ForeignNamespace
+        ))
+    );
+
+    let supplemented = changed
+        .with_slot_semantics(
+            DomSlotSemanticLimits::new(
+                DomSlotQueryLimits::new(64, 128).unwrap(),
+                capture_limits,
+                HtmlLanguageDirectionLimits::new(64, 1024, 0, 10000),
+                HtmlInertFactLimits::new(64, 10000),
+            ),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    for control in controls {
+        assert_eq!(
+            custom_error(&supplemented, control),
+            HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(true))
+        );
+    }
+}
+
+#[test]
+fn large_subject_limit_admits_small_native_control_capture() {
+    let mut dom = dom();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let input = batch.create_element_ns(&document, Namespace::html(), "input");
+    let commit = apply(&mut dom, batch);
+    let input = commit.created(&input).unwrap().unwrap();
+    let capture = dom
+        .snapshot()
+        .html_capture(
+            commit.document(&document).unwrap(),
+            None,
+            limits(),
+            DomHtmlCaptureLimits::new(usize::MAX / 3 + 1, 1_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let report = query(&capture, input, HtmlSemanticQuery::CustomError);
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(false))
+    );
+}
+
+#[test]
 fn xml_language_inheritance_uses_the_real_producer_and_maps_the_selecting_ancestor() {
     let mut dom = dom();
     let mut batch = DomBatch::new();

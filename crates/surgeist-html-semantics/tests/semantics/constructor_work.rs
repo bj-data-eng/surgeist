@@ -28,12 +28,13 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlControlCurrentValue, HtmlControlFacts, HtmlControlFactsError,
-    HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlDocumentFlatTreeRelation,
-    HtmlDocumentLanguageFallback, HtmlDocumentModalBlocking, HtmlDocumentModalFact,
-    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsError,
-    HtmlElementReferenceFactsLimits, HtmlElementReferenceKey, HtmlExplicitElementReference,
-    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlCapturedShadowProperties, HtmlControlCurrentValue, HtmlControlFactRecords,
+    HtmlControlFacts, HtmlControlFactsError, HtmlControlFactsLimits,
+    HtmlCustomControlClassification, HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback,
+    HtmlDocumentModalBlocking, HtmlDocumentModalFact, HtmlElementReferenceFact,
+    HtmlElementReferenceFacts, HtmlElementReferenceFactsError, HtmlElementReferenceFactsLimits,
+    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFlatTreeProducerId,
+    HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlImageContentBoxObservation, HtmlImageDimensionCompleted, HtmlImageDimensionExpectation,
     HtmlImageDimensionFacts, HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits,
     HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
@@ -718,10 +719,13 @@ fn control_run(f: &Controls, associations: bool, states: bool, work: usize) -> R
     match HtmlControlFacts::new(
         &f.capture,
         f.capture.host_facts_revision().clone(),
-        associations,
-        inputs,
-        options,
-        textareas,
+        HtmlControlFactRecords {
+            associations,
+            inputs,
+            options,
+            textareas,
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(records, work),
     ) {
         Ok(_) => Run::Admitted,
@@ -1073,10 +1077,10 @@ fn join_run(work: usize) -> Run {
     let facts = HtmlControlFacts::new(
         &capture,
         capture.host_facts_revision().clone(),
-        associations,
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations,
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(capacity, work),
     );
     let facts = match facts {
@@ -1140,10 +1144,10 @@ fn the_classification_join_charges_nothing_when_there_are_no_classifications() {
         let facts = match HtmlControlFacts::new(
             &capture,
             capture.host_facts_revision().clone(),
-            associations,
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations,
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(capacity, work),
         ) {
             Ok(facts) => facts,

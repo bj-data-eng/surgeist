@@ -380,6 +380,7 @@ impl core::fmt::Display for surgeist_html_semantics::HtmlControlFactsError
 pub fn surgeist_html_semantics::HtmlControlFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlControlFlag
 pub surgeist_html_semantics::HtmlControlFlag::Checkedness
+pub surgeist_html_semantics::HtmlControlFlag::CustomError
 pub surgeist_html_semantics::HtmlControlFlag::DirtyCheckedness
 pub surgeist_html_semantics::HtmlControlFlag::DirtyValue
 pub surgeist_html_semantics::HtmlControlFlag::Indeterminateness
@@ -1283,6 +1284,7 @@ pub surgeist_html_semantics::HtmlSemanticFact::ControlAutocomplete(surgeist_html
 pub surgeist_html_semantics::HtmlSemanticFact::ControlLabels(surgeist_html_semantics::HtmlSemanticValue<core::option::Option<surgeist_html_semantics::HtmlControlLabels>>)
 pub surgeist_html_semantics::HtmlSemanticFact::CurrentCheckedness(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::CurrentSelectedness(surgeist_html_semantics::HtmlSemanticValue<bool>)
+pub surgeist_html_semantics::HtmlSemanticFact::CustomError(surgeist_html_semantics::HtmlSemanticValue<bool>)
 pub surgeist_html_semantics::HtmlSemanticFact::DatalistOptions(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlOptionCollection>)
 pub surgeist_html_semantics::HtmlSemanticFact::DatalistSuggestionOptions(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlOptionCollection>)
 pub surgeist_html_semantics::HtmlSemanticFact::DefaultFeed(surgeist_html_semantics::HtmlSemanticValue<core::option::Option<surgeist_html_semantics::HtmlCaptureSubjectId>>)
@@ -1464,6 +1466,7 @@ pub surgeist_html_semantics::HtmlSemanticQuery::ControlAutocomplete
 pub surgeist_html_semantics::HtmlSemanticQuery::ControlLabels
 pub surgeist_html_semantics::HtmlSemanticQuery::CurrentCheckedness
 pub surgeist_html_semantics::HtmlSemanticQuery::CurrentSelectedness
+pub surgeist_html_semantics::HtmlSemanticQuery::CustomError
 pub surgeist_html_semantics::HtmlSemanticQuery::DatalistOptions
 pub surgeist_html_semantics::HtmlSemanticQuery::DatalistSuggestionOptions
 pub surgeist_html_semantics::HtmlSemanticQuery::DefaultFeed
@@ -2103,16 +2106,22 @@ impl surgeist_html_semantics::HtmlControlCurrentValue
 pub fn surgeist_html_semantics::HtmlControlCurrentValue::new(subject: surgeist_html_semantics::HtmlCaptureSubjectId, value: core::option::Option<surgeist_html::internal::values::document_string::DocumentString>) -> Self
 pub fn surgeist_html_semantics::HtmlControlCurrentValue::subject(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlControlCurrentValue::value(&self) -> core::option::Option<&surgeist_html::internal::values::document_string::DocumentString>
+pub struct surgeist_html_semantics::HtmlControlFactRecords
+pub surgeist_html_semantics::HtmlControlFactRecords::associations: alloc::vec::Vec<surgeist_html_semantics::HtmlFormAssociation>
+pub surgeist_html_semantics::HtmlControlFactRecords::custom_errors: alloc::vec::Vec<surgeist_html_semantics::HtmlCustomErrorFact>
+pub surgeist_html_semantics::HtmlControlFactRecords::inputs: alloc::vec::Vec<surgeist_html_semantics::HtmlInputControlState>
+pub surgeist_html_semantics::HtmlControlFactRecords::options: alloc::vec::Vec<surgeist_html_semantics::HtmlOptionControlState>
+pub surgeist_html_semantics::HtmlControlFactRecords::textareas: alloc::vec::Vec<surgeist_html_semantics::HtmlTextareaControlState>
 pub struct surgeist_html_semantics::HtmlControlFacts
 impl surgeist_html_semantics::HtmlControlFacts
 pub fn surgeist_html_semantics::HtmlControlFacts::associations(&self) -> &[surgeist_html_semantics::HtmlFormAssociation]
 pub fn surgeist_html_semantics::HtmlControlFacts::capture(&self) -> &surgeist_html_semantics::HtmlCaptureId
 pub fn surgeist_html_semantics::HtmlControlFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlControlFacts::inputs(&self) -> &[surgeist_html_semantics::HtmlInputControlState]
-pub fn surgeist_html_semantics::HtmlControlFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, associations: alloc::vec::Vec<surgeist_html_semantics::HtmlFormAssociation>, inputs: alloc::vec::Vec<surgeist_html_semantics::HtmlInputControlState>, options: alloc::vec::Vec<surgeist_html_semantics::HtmlOptionControlState>, textareas: alloc::vec::Vec<surgeist_html_semantics::HtmlTextareaControlState>, limits: surgeist_html_semantics::HtmlControlFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
+pub fn surgeist_html_semantics::HtmlControlFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: surgeist_html_semantics::HtmlControlFactRecords, limits: surgeist_html_semantics::HtmlControlFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
 pub fn surgeist_html_semantics::HtmlControlFacts::options(&self) -> &[surgeist_html_semantics::HtmlOptionControlState]
 pub fn surgeist_html_semantics::HtmlControlFacts::textareas(&self) -> &[surgeist_html_semantics::HtmlTextareaControlState]
-pub fn surgeist_html_semantics::HtmlControlFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, associations: alloc::vec::Vec<surgeist_html_semantics::HtmlFormAssociation>, inputs: alloc::vec::Vec<surgeist_html_semantics::HtmlInputControlState>, options: alloc::vec::Vec<surgeist_html_semantics::HtmlOptionControlState>, textareas: alloc::vec::Vec<surgeist_html_semantics::HtmlTextareaControlState>, limits: surgeist_html_semantics::HtmlControlFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
+pub fn surgeist_html_semantics::HtmlControlFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: surgeist_html_semantics::HtmlControlFactRecords, limits: surgeist_html_semantics::HtmlControlFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
 pub struct surgeist_html_semantics::HtmlControlFactsLimits
 impl surgeist_html_semantics::HtmlControlFactsLimits
 pub fn surgeist_html_semantics::HtmlControlFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -2175,6 +2184,9 @@ pub fn surgeist_html_semantics::HtmlCustomElementIsAuthorContext::autonomous_req
 pub fn surgeist_html_semantics::HtmlCustomElementIsAuthorContext::definition_requirement(&self) -> &surgeist_html_semantics::HtmlIsDefinitionRequirement
 pub fn surgeist_html_semantics::HtmlCustomElementIsAuthorContext::local(&self) -> &surgeist_html::internal::attributes::HtmlAttributeReport<surgeist_html::internal::values::custom_names::HtmlCustomElementName>
 pub fn surgeist_html_semantics::HtmlCustomElementIsAuthorContext::source_clause(&self) -> &'static str
+pub struct surgeist_html_semantics::HtmlCustomErrorFact
+impl surgeist_html_semantics::HtmlCustomErrorFact
+pub fn surgeist_html_semantics::HtmlCustomErrorFact::new(subject: surgeist_html_semantics::HtmlCaptureSubjectId, custom_error: bool) -> Self
 pub struct surgeist_html_semantics::HtmlDefaultButton
 impl surgeist_html_semantics::HtmlDefaultButton
 pub fn surgeist_html_semantics::HtmlDefaultButton::form_owner(&self) -> &surgeist_html_semantics::HtmlFormOwner

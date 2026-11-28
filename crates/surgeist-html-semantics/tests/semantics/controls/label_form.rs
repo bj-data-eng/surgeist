@@ -7,8 +7,8 @@ use surgeist_html::values::{
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlFormAssociation,
+    HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFactRecords,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlFormAssociation,
     HtmlFormAssociationState, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
@@ -92,13 +92,13 @@ fn controls_context(
     let controls = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        facts
-            .iter()
-            .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: facts
+                .iter()
+                .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1000, 1000000),
     )
     .unwrap();

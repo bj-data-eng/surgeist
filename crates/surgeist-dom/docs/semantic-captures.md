@@ -8,10 +8,11 @@ A capture maps one immutable canonical snapshot into the HTML semantic producer.
 `surgeist-html-semantics`, including every managed same-document detached node.
 It retains that snapshot, a checked bidirectional canonical/semantic identity
 map, and an optional host capture validated against the exact document stamp.
-Actual Input/Textarea flags and established-current Form associations use separate
-records, bounded together by twice the subject ceiling. Applicable mode-correct
-current values consume the HTML capture UTF-16 ceiling and language validation
-work; Input applicability comes from the shared HTML predicate, while Textarea
+Current control flags, intrinsic custom errors and established-current Form
+associations use separate records. Their combined capacity is bounded by three
+times the subject ceiling, clamped to the representable maximum. Applicable
+mode-correct current values consume the HTML capture UTF-16 ceiling and language
+validation work; Input applicability comes from the shared HTML predicate, while Textarea
 supplies actual API-normalized current text. Directionality and value-missing
 observations do not invent submitted wrapping. Slot supplements
 rebuild these same values/flags with assignments under their explicit language

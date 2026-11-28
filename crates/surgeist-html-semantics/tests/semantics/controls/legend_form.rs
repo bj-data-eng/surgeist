@@ -10,11 +10,12 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticUnsupported,
+    HtmlSemanticValue,
 };
 
 // Literal expectations follow HTMLLegendElement.form: immediate fieldset
@@ -71,13 +72,13 @@ fn context(
             HtmlControlFacts::new(
                 c,
                 c.host_facts_revision().clone(),
-                facts
-                    .iter()
-                    .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
-                    .collect(),
-                vec![],
-                vec![],
-                vec![],
+                HtmlControlFactRecords {
+                    associations: facts
+                        .iter()
+                        .map(|(id, state)| HtmlFormAssociation::new(id.clone(), state.clone()))
+                        .collect(),
+                    ..HtmlControlFactRecords::default()
+                },
                 HtmlControlFactsLimits::new(1000, 1000000),
             )
             .unwrap(),

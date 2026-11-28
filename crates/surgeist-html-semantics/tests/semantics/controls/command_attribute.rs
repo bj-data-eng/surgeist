@@ -20,10 +20,10 @@ use surgeist_html::{
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation,
+    HtmlFormAssociationState, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticQuery,
+    HtmlSemanticRequest, HtmlSemanticSession, HtmlSemanticValue,
 };
 
 fn element(local: &str) -> QualifiedName {
@@ -771,13 +771,13 @@ fn present_empty_or_unknown_command_still_excludes_auto_submitter_branch() {
         let facts = HtmlControlFacts::new(
             &capture,
             capture.host_facts_revision().clone(),
-            vec![HtmlFormAssociation::new(
-                subject.clone(),
-                HtmlFormAssociationState::EstablishedCurrent(None),
-            )],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations: vec![HtmlFormAssociation::new(
+                    subject.clone(),
+                    HtmlFormAssociationState::EstablishedCurrent(None),
+                )],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(10, 100000),
         )
         .unwrap();

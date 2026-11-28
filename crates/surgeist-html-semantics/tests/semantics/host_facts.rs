@@ -22,22 +22,23 @@ use surgeist_html_semantics::{
 };
 use surgeist_html_semantics::{
     HtmlBaseFactsLimits, HtmlBaseFactsRevision, HtmlBaseProducerId, HtmlCapture, HtmlCaptureLimits,
-    HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact, HtmlElementReferenceFacts,
-    HtmlElementReferenceFactsLimits, HtmlElementReferenceKey, HtmlExplicitElementReference,
-    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
-    HtmlGlobalInheritanceRevision, HtmlImageDimensionFacts, HtmlImageDimensionFactsLimits,
-    HtmlImageDimensionRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact,
-    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlMediaAttributeInput,
-    HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts,
-    HtmlMediaFactsLimits, HtmlMediaGrammarAttestation, HtmlMediaGrammarOutcome,
-    HtmlMediaGrammarRevision, HtmlMediaMatchAttestation, HtmlMediaMatchOutcome,
-    HtmlMediaProducerId, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
-    HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision,
-    HtmlNaturalDimensions, HtmlNaturalResourceId, HtmlNaturalResourceKey, HtmlOutputDefaultFacts,
-    HtmlOutputDefaultLimits, HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey,
-    HtmlRelExtensionEffect, HtmlRelFacts, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelProducerId,
+    HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlControlFactRecords, HtmlControlFacts,
+    HtmlControlFactsLimits, HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact,
+    HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
+    HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlGlobalInheritanceFacts,
+    HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
+    HtmlImageDimensionFacts, HtmlImageDimensionFactsLimits, HtmlImageDimensionRevision,
+    HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact, HtmlLanguageDirectionFacts,
+    HtmlLanguageDirectionLimits, HtmlMediaAttributeInput, HtmlMediaContextRevision,
+    HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts, HtmlMediaFactsLimits,
+    HtmlMediaGrammarAttestation, HtmlMediaGrammarOutcome, HtmlMediaGrammarRevision,
+    HtmlMediaMatchAttestation, HtmlMediaMatchOutcome, HtmlMediaProducerId,
+    HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact, HtmlNaturalDimensionLimits,
+    HtmlNaturalDimensionProducerId, HtmlNaturalDimensionRevision, HtmlNaturalDimensions,
+    HtmlNaturalResourceId, HtmlNaturalResourceKey, HtmlOutputDefaultFacts, HtmlOutputDefaultLimits,
+    HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey, HtmlRelExtensionEffect,
+    HtmlRelFacts, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelProducerId,
     HtmlRelRegistryOccurrence, HtmlRelRegistryStatus, HtmlRelRevision,
     HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact,
 };
@@ -314,14 +315,22 @@ fn control(scope: Option<&HtmlHostScope>, work: usize) -> Outcome {
         Some(scope) => HtmlControlFacts::with_accounting(
             &capture,
             host,
-            associations,
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations,
+                ..HtmlControlFactRecords::default()
+            },
             limits,
             scope,
         ),
-        None => HtmlControlFacts::new(&capture, host, associations, vec![], vec![], vec![], limits),
+        None => HtmlControlFacts::new(
+            &capture,
+            host,
+            HtmlControlFactRecords {
+                associations,
+                ..HtmlControlFactRecords::default()
+            },
+            limits,
+        ),
     };
     match result {
         Ok(_) => Outcome::Admitted,

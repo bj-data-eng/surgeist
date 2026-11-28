@@ -12,11 +12,12 @@ use super::constructor_work::{attributed, big_builder};
 use super::lookup_work::roomy_limits;
 use surgeist_html::{construction::HtmlDocumentMode, values::HtmlValueInterpreter};
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlControlFacts,
-    HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFailure,
-    HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport,
-    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage,
+    HtmlCapture, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlControlFactRecords,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
+    HtmlSemanticFailure, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery,
+    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlSemanticUsage,
 };
 
 /// Subjects of a capture of several small documents, so that each query's
@@ -149,13 +150,13 @@ fn page() -> Page {
     let facts = HtmlControlFacts::new(
         &capture,
         capture.host_facts_revision().clone(),
-        vec![HtmlFormAssociation::new(
-            id(&input),
-            HtmlFormAssociationState::ResetAgainstCapture,
-        )],
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: vec![HtmlFormAssociation::new(
+                id(&input),
+                HtmlFormAssociationState::ResetAgainstCapture,
+            )],
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1, 1 << 40),
     )
     .unwrap();

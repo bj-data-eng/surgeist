@@ -10,12 +10,13 @@ use surgeist_html::{
         QualifiedName,
     },
 };
+use surgeist_html_semantics::HtmlCustomErrorFact;
 use surgeist_html_semantics::HtmlHostFactsRevision;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
-    HtmlCapturedShadowProperties, HtmlControlFacts, HtmlControlFactsError, HtmlControlFactsLimits,
-    HtmlControlFlag, HtmlCustomControlClassification, HtmlFormAssociation,
+    HtmlCapturedShadowProperties, HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsError,
+    HtmlControlFactsLimits, HtmlControlFlag, HtmlCustomControlClassification, HtmlFormAssociation,
     HtmlFormAssociationState, HtmlFormOwner, HtmlFormOwnerOrigin, HtmlInputControlState,
     HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
@@ -23,6 +24,119 @@ use surgeist_html_semantics::{
     HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
     HtmlSemanticValue, HtmlTextareaControlState,
 };
+
+#[test]
+fn custom_error_requires_applicable_revision_qualified_evidence() {
+    let (mut builder, document) = builder();
+    let input = element(&mut builder, &document, "input", &[]);
+    let other = element(&mut builder, &document, "div", &[]);
+    builder.establish_children(&input, &[]).unwrap();
+    builder.establish_children(&other, &[]).unwrap();
+    builder
+        .establish_children(&document, &[input.clone(), other.clone()])
+        .unwrap();
+    let capture = builder.finish().unwrap();
+    let subject = capture.subject_id(&input).unwrap();
+    let other_subject = capture.subject_id(&other).unwrap();
+    let revision = capture.host_facts_revision();
+    let records = |custom_errors| HtmlControlFactRecords {
+        custom_errors,
+        ..HtmlControlFactRecords::default()
+    };
+    let declared = || HtmlCustomErrorFact::new(subject.clone(), false);
+    let limits = HtmlControlFactsLimits::new(4, 10000);
+    let missing = context(&capture, None, vec![]);
+    let report = query(&capture, &missing, &input, HtmlSemanticQuery::CustomError);
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::CustomError(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::ControlState {
+                subject: subject.clone(),
+                flag: HtmlControlFlag::CustomError,
+            }
+        ))
+    );
+
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            HtmlHostFactsRevision::fresh(),
+            records(vec![declared()]),
+            limits,
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::HostRevisionMismatch,
+    );
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(vec![
+                declared(),
+                HtmlCustomErrorFact::new(subject.clone(), true)
+            ]),
+            limits,
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::DuplicateSubject(subject.clone()),
+    );
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(vec![HtmlCustomErrorFact::new(other_subject.clone(), true)]),
+            limits,
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::InapplicableSubject(other_subject),
+    );
+
+    let (other_builder, other_document) = self::builder();
+    let other_capture = other_builder.finish().unwrap();
+    let mismatched = other_capture.subject_id(&other_document).unwrap();
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(vec![HtmlCustomErrorFact::new(mismatched, true)]),
+            limits,
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::Capture(HtmlCaptureError::ForeignCapture),
+    );
+
+    let mut with_spare_capacity = Vec::with_capacity(4);
+    with_spare_capacity.push(declared());
+    let capacity = with_spare_capacity.capacity();
+    assert_eq!(
+        HtmlControlFacts::new(
+            &capture,
+            revision.clone(),
+            records(with_spare_capacity),
+            HtmlControlFactsLimits::new(capacity - 1, 10000),
+        )
+        .unwrap_err(),
+        HtmlControlFactsError::RecordCapacity {
+            limit: capacity - 1,
+            required: capacity
+        },
+    );
+    let mut with_spare_capacity = Vec::with_capacity(capacity);
+    with_spare_capacity.push(declared());
+    let admitted = HtmlControlFacts::new(
+        &capture,
+        revision.clone(),
+        records(with_spare_capacity),
+        HtmlControlFactsLimits::new(capacity, 10000),
+    )
+    .unwrap();
+    let admitted = context(&capture, Some(admitted), vec![]);
+    let report = query(&capture, &admitted, &input, HtmlSemanticQuery::CustomError);
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::CustomError(HtmlSemanticValue::Known(false))
+    );
+}
 
 #[test]
 fn context_join_resumes_the_constructor_validation_budget() {
@@ -35,13 +149,13 @@ fn context_join_resumes_the_constructor_validation_budget() {
     let facts = HtmlControlFacts::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![HtmlFormAssociation::new(
-            c.subject_id(&input).unwrap(),
-            HtmlFormAssociationState::ResetAgainstCapture,
-        )],
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: vec![HtmlFormAssociation::new(
+                c.subject_id(&input).unwrap(),
+                HtmlFormAssociationState::ResetAgainstCapture,
+            )],
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(1, 1000),
     )
     .unwrap();
@@ -142,10 +256,13 @@ fn facts(
     HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        associations,
-        inputs,
-        options,
-        textareas,
+        HtmlControlFactRecords {
+            associations,
+            inputs,
+            options,
+            textareas,
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(100, 1000000),
     )
     .unwrap()
@@ -804,10 +921,7 @@ fn facts_constructor_checks_kinds_foreign_ids_targets_host_and_combined_capacity
         HtmlControlFacts::new(
             &c,
             HtmlHostFactsRevision::fresh(),
-            vec![],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords::default(),
             caps
         ),
         Err(HtmlControlFactsError::HostRevisionMismatch)
@@ -820,10 +934,10 @@ fn facts_constructor_checks_kinds_foreign_ids_targets_host_and_combined_capacity
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![invalid],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations: vec![invalid],
+                ..HtmlControlFactRecords::default()
+            },
             caps
         ),
         Err(HtmlControlFactsError::InvalidFormOwner(_))
@@ -833,10 +947,10 @@ fn facts_constructor_checks_kinds_foreign_ids_targets_host_and_combined_capacity
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            vec![],
-            vec![wrong],
-            vec![],
+            HtmlControlFactRecords {
+                options: vec![wrong],
+                ..HtmlControlFactRecords::default()
+            },
             caps
         ),
         Err(HtmlControlFactsError::InapplicableSubject(_))
@@ -851,10 +965,10 @@ fn facts_constructor_checks_kinds_foreign_ids_targets_host_and_combined_capacity
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![foreign],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations: vec![foreign],
+                ..HtmlControlFactRecords::default()
+            },
             caps
         ),
         Err(HtmlControlFactsError::Capture(
@@ -873,10 +987,10 @@ fn facts_constructor_checks_kinds_foreign_ids_targets_host_and_combined_capacity
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            inputs,
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                inputs,
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(2, 100000)
         ),
         Err(HtmlControlFactsError::RecordCapacity {
@@ -896,10 +1010,10 @@ fn duplicate_records_and_exhausted_validation_work_reject_before_context_creatio
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            vec![one.clone(), one.clone()],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                inputs: vec![one.clone(), one.clone()],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(2, 100000)
         ),
         Err(HtmlControlFactsError::DuplicateSubject(_))
@@ -908,10 +1022,10 @@ fn duplicate_records_and_exhausted_validation_work_reject_before_context_creatio
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![],
-            vec![one],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                inputs: vec![one],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(1, 0)
         ),
         Err(HtmlControlFactsError::ValidationWork { limit: 0, .. })
@@ -1060,10 +1174,10 @@ fn actual_owner_pointer_can_be_read_with_unavailable_ancestry_but_proved_cross_t
         HtmlControlFacts::new(
             &c,
             c.host_facts_revision().clone(),
-            vec![established],
-            vec![],
-            vec![],
-            vec![],
+            HtmlControlFactRecords {
+                associations: vec![established],
+                ..HtmlControlFactRecords::default()
+            },
             HtmlControlFactsLimits::new(1, 100000)
         ),
         Err(HtmlControlFactsError::CrossTreeFormOwner(_))

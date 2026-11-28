@@ -10,11 +10,11 @@ use surgeist_html::{
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlOptionCollection, HtmlOptionControlState,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput,
-    HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlOptionCollection,
+    HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticDependencies, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticUnsupported, HtmlSemanticValue,
 };
 
 fn attrs(values: &[(&str, &str)]) -> OrderedAttributes {
@@ -1157,12 +1157,13 @@ fn changed_captures_and_irrelevant_selectedness_contexts_remain_qualified() {
     let flags = HtmlControlFacts::new(
         &c,
         c.host_facts_revision().clone(),
-        vec![],
-        vec![],
-        os.iter()
-            .map(|id| HtmlOptionControlState::new(id.clone(), Some(false), None))
-            .collect(),
-        vec![],
+        HtmlControlFactRecords {
+            options: os
+                .iter()
+                .map(|id| HtmlOptionControlState::new(id.clone(), Some(false), None))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(100, 100000),
     )
     .unwrap();

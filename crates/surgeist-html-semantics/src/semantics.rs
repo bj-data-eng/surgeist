@@ -409,6 +409,8 @@ pub enum HtmlSemanticQuery {
     DirtyCheckednessFlag,
     OptionDirtiness,
     Indeterminateness,
+    /// Whether a supported native control has a nonempty custom validity message.
+    CustomError,
     EditingHost,
     Editable,
     IsContentEditable,
@@ -786,6 +788,9 @@ impl HtmlSemanticQuery {
             Self::Indeterminateness => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#concept-input-indeterminate"
             }
+            Self::CustomError => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#dom-validitystate-customerror"
+            }
             Self::EditingHost => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#editing-host"
             }
@@ -1074,6 +1079,7 @@ pub enum HtmlSemanticFact {
     DirtyCheckednessFlag(HtmlSemanticValue<bool>),
     OptionDirtiness(HtmlSemanticValue<bool>),
     Indeterminateness(HtmlSemanticValue<bool>),
+    CustomError(HtmlSemanticValue<bool>),
     EditingHost(HtmlSemanticValue<bool>),
     Editable(HtmlSemanticValue<bool>),
     IsContentEditable(HtmlSemanticValue<bool>),
@@ -3244,6 +3250,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                     HtmlControlFlag::Indeterminateness,
                                 )?)
                             }
+                            HtmlSemanticQuery::CustomError => HtmlSemanticFact::CustomError(
+                                self.control_flag(&request.subject, HtmlControlFlag::CustomError)?,
+                            ),
                         }
                     }
                     _ => match request.query() {
@@ -3646,6 +3655,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         HtmlSemanticQuery::Indeterminateness => {
                             HtmlSemanticFact::Indeterminateness(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::CustomError => {
+                            HtmlSemanticFact::CustomError(HtmlSemanticValue::Inapplicable)
                         }
                     },
                 },

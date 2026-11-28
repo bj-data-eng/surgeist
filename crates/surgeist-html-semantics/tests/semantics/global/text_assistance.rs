@@ -17,13 +17,13 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,
     HtmlCapturedNodeKind, HtmlCapturedShadowProperties, HtmlComputedWritingSuggestions,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlDesignMode, HtmlDocumentDesignModeFact,
-    HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin, HtmlGlobalInheritanceFacts,
-    HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
-    HtmlOwnAutocapitalizationHint, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits,
-    HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticValue, HtmlUsedAutocapitalizationBranch,
+    HtmlControlFactRecords, HtmlControlFacts, HtmlControlFactsLimits, HtmlDesignMode,
+    HtmlDocumentDesignModeFact, HtmlFormAssociation, HtmlFormAssociationState, HtmlFormOwnerOrigin,
+    HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
+    HtmlGlobalInheritanceRevision, HtmlOwnAutocapitalizationHint, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
+    HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticValue, HtmlUsedAutocapitalizationBranch,
     HtmlUsedAutocapitalizationHint, HtmlUsedAutocorrectionState,
 };
 
@@ -92,13 +92,13 @@ fn with_owners(
     let f = HtmlControlFacts::new(
         c,
         c.host_facts_revision().clone(),
-        owners
-            .into_iter()
-            .map(|(id, state)| HtmlFormAssociation::new(id, state))
-            .collect(),
-        vec![],
-        vec![],
-        vec![],
+        HtmlControlFactRecords {
+            associations: owners
+                .into_iter()
+                .map(|(id, state)| HtmlFormAssociation::new(id, state))
+                .collect(),
+            ..HtmlControlFactRecords::default()
+        },
         HtmlControlFactsLimits::new(100, 1000000),
     )
     .unwrap();
