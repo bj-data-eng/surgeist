@@ -17,6 +17,8 @@ mod g2c_nonce;
 #[cfg(feature = "detail")]
 mod g2d_names;
 pub(super) mod g2d_origins;
+mod g2e2_corpus;
+mod g2e2_root_bank;
 mod g2e_corpus;
 mod g2e_edges;
 mod g2e_insertion;

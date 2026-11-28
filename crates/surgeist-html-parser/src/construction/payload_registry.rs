@@ -16,6 +16,8 @@ pub(super) struct PayloadStorage {
     pub(super) allocation: VectorCapacity<RetainedPayload>,
     pub(super) node_joins: Vec<NodeJoins>,
     pub(super) node_joins_allocation: VectorCapacity<NodeJoins>,
+    /// The cached tree roots of the records, beside the node joins while the parse builds.
+    pub(super) tree_roots: tree_root::TreeRootBank,
     /// Every row of a kind that is also searched across all nodes, in registry
     /// order. A scan of these lists visits only rows of that kind.
     pub(super) kind_slots: [KindSlots; KIND_LISTS],
@@ -43,7 +45,7 @@ pub(super) struct PayloadStorage {
     /// unique per record joined that record. Zero proves the join names the
     /// only row, so preparation need not scan the registry to count them.
     pub(super) repeated_unique_rows: usize,
-    /// The generation of the cached tree roots in [`NodeJoins`]; `None` once no
+    /// The generation of the cached tree roots in [`Self::tree_roots`]; `None` once no
     /// later generation can be named, when nothing is cached.
     pub(super) tree_stamp: Option<NonZeroU32>,
     /// How many topology changes have been announced, or `None` once the count
@@ -821,6 +823,7 @@ impl PayloadStorage {
             allocation,
             node_joins,
             node_joins_allocation,
+            mut tree_roots,
             kind_slots,
             explicit_forms,
             prepared_entries,
@@ -887,6 +890,7 @@ impl PayloadStorage {
             &mut refused,
             release_vector(control, node_joins, node_joins_allocation),
         );
+        keep_first(&mut refused, tree_roots.publish(control));
         keep_first(
             &mut refused,
             release_logical(

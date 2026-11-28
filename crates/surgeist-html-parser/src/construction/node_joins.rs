@@ -15,8 +15,6 @@ use super::*;
 pub(super) struct NodeJoins {
     pub(super) textarea: Option<NonZeroU32>,
     pub(super) rows: JoinTable<Option<NonZeroU32>>,
-    /// The record's tree root as last found; see [`tree_root`].
-    pub(super) tree_root: tree_root::TreeRootCell,
 }
 
 /// Node-keyed registry row kinds with a join in [`NodeJoins`].
@@ -77,16 +75,13 @@ slots!(Join, JOIN_COUNT, {
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
 /// refused as the registry invariant (see `joined_cell`).
-const _: () = assert!(
-    mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 1) + mem::size_of::<tree_root::TreeRootCell>()
-);
+const _: () = assert!(mem::size_of::<NodeJoins>() == 4 * (JOIN_COUNT + 1));
 
 impl Default for NodeJoins {
     fn default() -> Self {
         Self {
             textarea: None,
             rows: JoinTable::filled(None),
-            tree_root: tree_root::TreeRootCell::default(),
         }
     }
 }

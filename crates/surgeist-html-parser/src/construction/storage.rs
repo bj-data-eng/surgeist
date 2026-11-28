@@ -103,9 +103,23 @@ impl SessionStorage {
                 return Err(stop.into());
             }
         };
+        let tree_roots = match tree_root::TreeRootBank::new(control) {
+            Ok(tree_roots) => tree_roots,
+            Err(error) => {
+                release_vector(control, bases, bases_allocation)?;
+                release_vector(control, forms, forms_allocation)?;
+                release_vector(control, node_joins, node_joins_allocation)?;
+                release_vector(control, values, allocation)?;
+                return Err(error);
+            }
+        };
         let facts = match ParseFacts::new(control) {
             Ok(facts) => facts,
             Err(error) => {
+                // A refused release has latched its stop; the error that ended the creation is
+                // the first reported.
+                let mut tree_roots = tree_roots;
+                let _ = tree_roots.publish(control);
                 release_vector(control, bases, bases_allocation)?;
                 release_vector(control, forms, forms_allocation)?;
                 release_vector(control, node_joins, node_joins_allocation)?;
@@ -161,6 +175,7 @@ impl SessionStorage {
                 allocation,
                 node_joins,
                 node_joins_allocation,
+                tree_roots,
                 kind_slots,
                 explicit_forms: None,
                 prepared_entries: 0,

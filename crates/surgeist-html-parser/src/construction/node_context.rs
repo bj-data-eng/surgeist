@@ -484,10 +484,14 @@ impl SessionStorage {
                 .map(|column| column.rows().to_vec())
                 .unwrap_or_default();
         }
-        match contexts.column.take() {
+        let released = match contexts.column.take() {
             Some(column) => column.release(c, &owner, |_, _| Ok(()), |_| Ok(())),
             None => Ok(()),
-        }
+        };
+        // The roots the parse cached are build-only: the published trees are answered by the
+        // climb alone.
+        let roots = self.payloads.tree_roots.publish(c);
+        released.and(roots)
     }
 }
 

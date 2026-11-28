@@ -459,6 +459,71 @@ fn sites_at(sites: &[Site], file: &str, function: &str) -> usize {
         .count()
 }
 
+/// Sites asked at `function` of `file` by a call that contains `call`.
+fn sites_at_line(sites: &[Site], file: &str, function: &str, call: &str) -> usize {
+    sites
+        .iter()
+        .filter(|site| site.file == file && site.function == function && site.line.contains(call))
+        .count()
+}
+
+/// The bank of the cached tree roots grows as the node-join bank does: when a creation needs
+/// more cells than its capacity holds, to the larger of the cells it needs and twice its capacity.
+/// The number of growths of a published parse is derived from its tree by that rule, as the
+/// records were created: a template element and its contents are one creation of two records,
+/// and every other record is a creation of its own.
+fn root_bank_growths(report: &crate::HtmlParseReport) -> usize {
+    let arena = &report.history().storage().view;
+    let (mut length, mut capacity, mut growths) = (0_usize, 0_usize, 0_usize);
+    let mut position = 0;
+    while position < arena.len() {
+        let record = arena.node_at(position).unwrap();
+        let count = if record.template_contents().is_some() {
+            2
+        } else {
+            1
+        };
+        if length + count > capacity {
+            capacity = (length + count).max(2 * capacity);
+            growths += 1;
+        }
+        length += count;
+        position += count;
+    }
+    growths
+}
+
+/// Each growth of the bank of cached roots is a prepared slot, asked at the creation that grows
+/// the node-join bank, and a stop after it leaves nothing retained. The count is derived from the
+/// tree the parse built.
+#[test]
+fn root_bank_growths_leave_nothing_retained_when_the_parse_stops_after_their_slot() {
+    let file = "src/construction/storage_allocation.rs";
+    for source in [
+        "<!doctype html><p>a</p><div><b>b</b></div>",
+        "<!doctype html><p>a</p><template><b>b</b></template>",
+        "<!doctype html><ul><li>1<li>2<li>3<li>4<li>5<li>6<li>7<li>8<li>9</ul>",
+    ] {
+        let report = crate::HtmlDocumentParseRequest::offline(
+            crate::HtmlSource::utf8(source),
+            super::tests::limits(),
+        )
+        .parse()
+        .unwrap();
+        let (retained, sites) = retained_after_each_prepared_slot(&document(source));
+        assert!(
+            retained.is_empty(),
+            "{source}: {:?}",
+            &retained[..retained.len().min(8)]
+        );
+        assert_eq!(
+            sites_at_line(&sites, file, "allocate_native_record", "admit_growth("),
+            root_bank_growths(&report),
+            "{source}"
+        );
+    }
+}
+
 /// The Document facts of a parse are rows of a family table: the facts of the parser's Document,
 /// of the inert Document that a template's contents belong to, and of the Document that a
 /// contextual parse captures for its template contents. Each is admitted before its node is
@@ -540,7 +605,12 @@ fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_s
     let plain = "<!doctype html><p>a</p><div><b>b</b></div>";
     let sites = sweep(plain);
     assert_eq!(
-        sites_at(&sites, file, "allocate_native_record"),
+        sites_at_line(
+            &sites,
+            file,
+            "allocate_native_record",
+            "admit_context_cells("
+        ),
         nodes(plain),
         "{sites:?}"
     );
@@ -557,7 +627,12 @@ fn node_document_cells_leave_nothing_retained_when_the_parse_stops_after_their_s
     let template = "<!doctype html><p>a</p><template><b>b</b></template>";
     let sites = sweep(template);
     assert_eq!(
-        sites_at(&sites, file, "allocate_native_record"),
+        sites_at_line(
+            &sites,
+            file,
+            "allocate_native_record",
+            "admit_context_cells("
+        ),
         nodes(template) - 1,
         "{sites:?}"
     );

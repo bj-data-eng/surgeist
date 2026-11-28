@@ -182,12 +182,22 @@ impl SessionStorage {
             count,
         )?;
         control.admit_atomic_layout(mem::size_of::<NodeJoins>())?;
+        // The cell of each record's cached root is part of the record's join entry, held in a
+        // bank beside the joins: it grows with them, and its copy and write are charged with
+        // theirs.
+        self.payloads.tree_roots.admit_growth(control, count)?;
+        let cells = self.payloads.tree_roots.cells_for(count);
         control.charge(
             HtmlParseWorkCategory::CopyByte,
-            count.saturating_mul(mem::size_of::<NodeJoins>()) as u64,
+            (count.saturating_mul(mem::size_of::<NodeJoins>()))
+                .saturating_add(cells.saturating_mul(mem::size_of::<tree_root::TreeRootCell>()))
+                as u64,
         )?;
         self.admit_context_cells(control, count)?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, entries)?;
+        control.charge(
+            HtmlParseWorkCategory::RecordWrite,
+            entries.saturating_add(cells as u64),
+        )?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
             mem::size_of::<ParserNode>() as u64,
@@ -208,6 +218,10 @@ impl SessionStorage {
         for _ in 0..count {
             self.payloads.node_joins.push(NodeJoins::default());
         }
+        self.payloads
+            .tree_roots
+            .push_empty(index, count)
+            .map_err(|_| latch_registry_row(control))?;
         self.push_context_cells(count)
             .map_err(|_| latch_registry_row(control))?;
         if let Some(raw) = nonce_raw {
