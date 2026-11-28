@@ -1247,7 +1247,7 @@ impl DomElementTaskEventContext for QueueContext {
     }
 }
 #[test]
-fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actual_sources() {
+fn passive_cancel_listener_cannot_stop_requests_or_their_close_and_toggle_tasks() {
     let (mut session, _, _, subject) = fixture();
     open(&mut session, subject);
     let mut context = QueueContext {
@@ -1255,6 +1255,23 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
         delivered: Vec::new(),
     };
     let mut registry = dispatcher::<QueueContext>();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::CANCEL,
+            DomEventCallback::new(|_, _, _, event| {
+                assert!(event.cancelable());
+                event.prevent_default();
+                assert!(!event.default_prevented());
+                Ok(())
+            }),
+            DomEventListenerOptions {
+                passive: Some(true),
+                ..DomEventListenerOptions::default()
+            },
+        )
+        .unwrap();
     for kind in [DomEventType::CLOSE, DomEventType::TOGGLE] {
         registry
             .add_listener(
@@ -1285,12 +1302,22 @@ fn successful_request_dispatches_real_close_and_toggle_tasks_through_their_actua
             .unwrap();
     }
     let request = start_request(&mut session, subject, Some("real queue result".into()));
-    assert!(!service(&mut session, &request, &mut registry, &mut context).default_prevented());
+    let receipt = service(&mut session, &request, &mut registry, &mut context);
+    assert_eq!(receipt.callbacks(), 1);
+    assert!(receipt.failures().is_empty());
+    assert!(!receipt.default_prevented());
     finish_nested_close(
         &mut session,
         request.operation(),
         &mut registry,
         &mut context,
+    );
+    let snapshot = session.snapshot();
+    let dialog = snapshot.node(subject).unwrap();
+    assert!(dialog.attribute(&"open".into()).is_none());
+    assert_eq!(
+        dialog.as_dialog().unwrap().return_value(),
+        &DocumentString::from("real queue result")
     );
     let close = context
         .tasks
