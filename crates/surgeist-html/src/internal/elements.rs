@@ -34,6 +34,7 @@ pub(crate) mod script_preparation;
 pub(crate) mod script_result;
 pub(crate) mod script_type;
 pub(crate) mod select;
+pub(crate) mod select_notification;
 pub(crate) mod slot_assign;
 pub(crate) mod style;
 pub(crate) mod svg_script_flags;

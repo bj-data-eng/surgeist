@@ -276,6 +276,11 @@ impl HtmlSelectFlags {
         self.user_validity
     }
 
+    /// Sets the flag at the first effect of the original user notification task.
+    pub fn mark_user_validity(&mut self) {
+        self.user_validity = true;
+    }
+
     /// The flag step of the [select reset algorithm](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#the-select-element).
     /// Option reset, normalization and selectedcontent updates follow in order
     /// in the adapter, using its actual option list.
@@ -342,6 +347,10 @@ impl HtmlOptionFlags {
     /// and updates selectedcontent afterward; it does not ask for a reset.
     pub fn select_for_select_setter(&mut self) {
         self.set_selectedness_and_dirty(true);
+    }
+
+    pub(crate) fn toggle_selectedness_for_user(&mut self) {
+        self.set_selectedness_and_dirty(!self.selectedness);
     }
 
     fn set_selectedness_and_dirty(&mut self, selected: bool) {

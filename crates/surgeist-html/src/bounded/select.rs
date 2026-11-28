@@ -10,3 +10,9 @@ pub use crate::internal::elements::select::{
     option_disabled_ancestor, select_display_size_default, select_option_rule, select_type_value,
     selectedcontent_update,
 };
+
+pub use crate::internal::elements::select_notification::{
+    HtmlSelectNotificationAction, HtmlSelectNotificationCursor, HtmlSelectNotificationEvent,
+    HtmlSelectNotificationReply, HtmlSelectNotificationReplyError, HtmlSelectUserToggleState,
+    HtmlSelectUserToggleTarget, toggle_select_option_for_user,
+};

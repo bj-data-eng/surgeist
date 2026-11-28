@@ -1220,6 +1220,13 @@ even when the result is absent. This immutable query follows the
 [placeholder definition](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#placeholder-label-option)
 and performs no selection or validity transition.
 
+`toggle_select_option_for_user` flips the selectedness and sets the dirtiness
+of the qualified enabled member of an enabled multiple Select. The returned
+notification orders the original task's user-validity write, descendant
+selectedcontent update, current fallback-label update, and trusted input and
+change dispatch. DOM and Runtime supply canonical membership, queue custody,
+the actual fallback node, and the dispatch results.
+
 `SelectValueMissing` observes the pinned required/no-selection-or-only-placeholder
 condition from supplied current selectedness. It reuses the option list,
 placeholder and option-value owners. Two selected options, known nonfirst or
