@@ -115,8 +115,8 @@ use surgeist_dom::hosted::{
     DomHostedPolicyPublication, DomHostedPolicyRequest, DomHostedPreparedTopLevel,
     DomHostedRecordLimits, DomHostedResource, DomHostedRuntimeRetention, DomHostedSource,
     DomHostedSourceId, DomHostedSourceRevision, DomHostedTopLevelPreparation,
-    DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile, DomPermissionsPolicyValue,
-    DomWindowNamedValue,
+    DomHostedWindowNavigation, DomInitialPermissionsPolicy, DomInitialPermissionsPolicyProfile,
+    DomPermissionsPolicyValue, DomWindowNamedValue,
 };
 use surgeist_dom::identity::{
     DocumentId, DomAttrId, DomDocumentStamp, DomOwnerId, DomRevision, DomStamp, NodeId,

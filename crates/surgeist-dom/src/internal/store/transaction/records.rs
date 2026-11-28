@@ -366,6 +366,7 @@ pub(in crate::internal::store) enum Overlay<'a> {
     Interactive(&'a Option<crate::internal::dialog::DocumentInteractiveState<Key>>),
     Autofocus(&'a Option<crate::internal::autofocus::DocumentAutofocusState<Key>>),
     ActiveRange(&'a crate::internal::range::DomActiveRangeState),
+    FocusedAreaDesignation(&'a crate::internal::document::DomFocusedAreaDesignation),
 }
 #[derive(Clone, Copy)]
 pub(in crate::internal::store) struct NodeRead<'a> {
@@ -1037,6 +1038,9 @@ impl<'a> NodeRead<'a> {
         }
     }
     pub fn focused_area_designation(self) -> crate::internal::document::DomFocusedAreaDesignation {
+        if let Some(Overlay::FocusedAreaDesignation(value)) = self.overlay {
+            return *value;
+        }
         match self.source {
             Source::Canonical(n) => n.focused_area_designation(),
             Source::Staged(DraftNode::Document(n)) => n.value().focused_area_designation,

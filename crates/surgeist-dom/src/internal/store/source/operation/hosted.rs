@@ -1151,6 +1151,7 @@ impl Draft {
         let PublicationValue::NativeExecution {
             global,
             navigation_start,
+            window_navigation,
         } = publication
         else {
             return Err(DomHostedError::WrongPhase);
@@ -1179,6 +1180,7 @@ impl Draft {
             host: request.host,
             context: request.context,
             global: *global,
+            window_navigation: window_navigation.clone(),
             navigation_start: *navigation_start,
             policy: inner.policy.ok_or(DomHostedError::WrongPhase)?,
             phase: DocumentPhase::Constructed,
@@ -1291,6 +1293,7 @@ impl Draft {
             host: old.host,
             context: old.context,
             global: old.global,
+            window_navigation: old.window_navigation.clone(),
             navigation_start: old.navigation_start,
             policy: old.policy,
             phase,
@@ -1304,6 +1307,43 @@ impl Draft {
 }
 
 impl DomSourceLease<'_> {
+    /// Create the original child Window's Navigation backing against this
+    /// Source's custody and every observing ancestor.
+    ///
+    /// Returns a hosted identity or phase error for a stale child, a
+    /// mismatched Global or a duplicate binding. Admission and cancellation
+    /// failures leave the original execution request available for retry.
+    pub fn create_hosted_child_window_navigation(
+        &self,
+        source: &DomHostedSource,
+        child: &DomHostedChildRequest,
+        global: DomHostedGlobalId,
+        cancel: &AtomicBool,
+    ) -> Result<DomHostedWindowNavigation, DomHostedError> {
+        self.dom.validate_hosted_source(source)?;
+        let DomHostedChildStep::NativeExecution(request) = self.hosted_child_step(child)? else {
+            return Err(DomHostedError::WrongPhase);
+        };
+        let operation = self
+            .dom
+            .source_operation
+            .as_ref()
+            .ok_or(DomHostedError::WrongPhase)?;
+        source.create_window_navigation_with(request, global, cancel, |bytes| {
+            let additional = self
+                .dom
+                .source_owner_custody_bytes()?
+                .saturating_sub(operation.custody_bytes)
+                .checked_add(bytes)
+                .ok_or(DomError::RepresentationExhausted)?;
+            operation.draft.source_admit(additional, cancel)?;
+            let total = self
+                .dom
+                .source_observation_total(storage::Payload { bytes, units: 0 }, cancel)?;
+            self.dom.admit_source_observers(total, cancel)
+        })
+    }
+
     pub fn accept_hosted_child_publication(
         &mut self,
         source: &mut DomHostedSource,
@@ -1312,6 +1352,17 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<(), DomHostedError> {
         self.dom.validate_hosted_source(source)?;
+        if publication.as_ref().is_some_and(|publication| {
+            matches!(
+                publication.value,
+                PublicationValue::NativeExecution {
+                    window_navigation: Some(_),
+                    ..
+                }
+            )
+        }) {
+            self.dom.admit_source_owner_payload(cancel)?;
+        }
         let mut operation = self
             .dom
             .source_operation
@@ -1332,20 +1383,24 @@ impl DomSourceLease<'_> {
             if current.key != inner.request().key {
                 return Err(DomHostedError::WrongPhase);
             }
-            if matches!(
-                (&inner.phase, &current.value),
-                (
-                    canonical::CreationPhase::Execution(_),
-                    PublicationValue::NativeExecution { .. }
-                )
-            ) && child.inherited_policy.is_none()
+            if let (
+                canonical::CreationPhase::Execution(_),
+                PublicationValue::NativeExecution {
+                    global,
+                    window_navigation,
+                    ..
+                },
+            ) = (&inner.phase, &current.value)
             {
-                child.inherited_policy = Some(operation.draft.inherit_child_policy(
-                    &self.dom.csp_owner,
-                    source,
-                    inner,
-                    cancel,
-                )?);
+                source.validate_window_navigation(*global, window_navigation.as_ref())?;
+                if child.inherited_policy.is_none() {
+                    child.inherited_policy = Some(operation.draft.inherit_child_policy(
+                        &self.dom.csp_owner,
+                        source,
+                        inner,
+                        cancel,
+                    )?);
+                }
             }
             let next = inner.next_request()?;
             let input_bytes = operation.input_bytes()?;

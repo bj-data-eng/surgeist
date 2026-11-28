@@ -116,6 +116,8 @@ pub(in crate::internal::store) enum Undo {
     MediaHookIndex(usize),
     MediaRemovalsLength(usize),
     MediaRemovalsCapacity(Option<custody::Held<Vec<super::media_removal::Pending>>>),
+    FocusRemovalsLength(usize),
+    FocusRemovalsCapacity(Option<super::focus::removal::Pending>),
     RetirementsLength(usize),
     RetirementsCapacity(custody::Held<Vec<(super::NodeId, super::Key)>>),
     Range(ranges::RangeUndo),
@@ -221,6 +223,12 @@ impl Undo {
                 }
             }
             Self::MediaRemovalsCapacity(before) => draft.media_removals = before,
+            Self::FocusRemovalsLength(len) => {
+                if let Some(pending) = &mut draft.focus_removals {
+                    pending.value_mut().truncate(len);
+                }
+            }
+            Self::FocusRemovalsCapacity(before) => draft.focus_removals = before,
             Self::RetirementsLength(len) => draft.dispatch_retirements.truncate(len),
             Self::RetirementsCapacity(before) => {
                 let (values, debit) = before.into_parts();

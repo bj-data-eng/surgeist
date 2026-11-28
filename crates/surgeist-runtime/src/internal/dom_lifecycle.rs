@@ -592,11 +592,11 @@ impl HostedState {
     }
     fn retained_bytes(&mut self, cancel: &AtomicBool) -> Result<usize, DomHostedRuntimeError> {
         native_retained_bytes(
+            &self.source,
             &self.hosts,
             &self.children,
             &self.destruction,
-            &mut self.work,
-            self.limits.work,
+            (&mut self.work, self.limits.work),
             cancel,
             || Ok(()),
         )
@@ -607,11 +607,11 @@ impl HostedState {
         cancel: &AtomicBool,
     ) -> Result<usize, DomHostedRuntimeError> {
         native_retained_bytes(
+            &self.source,
             &self.hosts,
             &self.children,
             &self.destruction,
-            &mut self.work,
-            self.limits.work,
+            (&mut self.work, self.limits.work),
             cancel,
             || {
                 lease
@@ -641,11 +641,11 @@ impl HostedState {
             .checked_add(1)
             .ok_or(DomHostedRuntimeError::Admission)?;
         let old = native_retained_bytes(
+            &self.source,
             &self.hosts,
             &self.children,
             &self.destruction,
-            &mut self.work,
-            self.limits.work,
+            (&mut self.work, self.limits.work),
             cancel,
             || {
                 self.source
@@ -1283,15 +1283,17 @@ fn native_task_count_admitted(
 }
 
 fn native_retained_bytes(
+    source: &DomHostedSource,
     hosts: &Vec<records::Host>,
     children: &Vec<child::Creation>,
     destruction: &destruction::State,
-    work: &mut u64,
-    limit: u64,
+    (work, limit): (&mut u64, u64),
     cancel: &AtomicBool,
     mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
 ) -> Result<usize, DomHostedRuntimeError> {
     let mut bytes = size_of::<RefCell<HostedState>>()
+        .checked_add(source.retained_window_navigation_bytes())
+        .ok_or(DomHostedRuntimeError::Admission)?
         .checked_add(
             hosts
                 .capacity()
@@ -1680,6 +1682,11 @@ fn drive_creation(
                     if retained_before
                         .checked_add(retained_added)
                         .and_then(|bytes| bytes.checked_add(payload))
+                        .and_then(|bytes| {
+                            bytes.checked_add(
+                                surgeist_dom::hosted::DomHostedWindowNavigation::allocation_bytes(),
+                            )
+                        })
                         .is_none_or(|bytes| bytes > storage_limit)
                     {
                         return Err(DomHostedRuntimeError::Admission);
@@ -1694,12 +1701,15 @@ fn drive_creation(
                     {
                         return Err(DomHostedRuntimeError::Protocol);
                     }
+                    let navigation = source
+                        .create_window_navigation(request, global, cancel)
+                        .map_err(DomHostedRuntimeError::Dom)?;
                     let mut context = creation.context.take().expect("validated original BC");
                     context.global = Some(global);
                     agent
                         .windows
                         .rows
-                        .push(watcher::NativeWindow::fresh(global));
+                        .push(watcher::NativeWindow::fresh(global, navigation));
                     agent.globals.push(records::Global {
                         context,
                         id: global,
@@ -1714,9 +1724,23 @@ fn drive_creation(
                     });
                 }
                 if creation.publication.is_none() {
+                    let navigation = watcher::window_navigation(
+                        &agent.windows,
+                        global,
+                        work,
+                        limit,
+                        cancel,
+                        || Ok(()),
+                    )?;
                     creation.publication = Some(
                         source
-                            .seal_native_execution(request, global, sample.microseconds, cancel)
+                            .seal_native_execution(
+                                request,
+                                global,
+                                sample.microseconds,
+                                Some(navigation),
+                                cancel,
+                            )
                             .map_err(DomHostedRuntimeError::Dom)?,
                     );
                 }
@@ -2235,11 +2259,11 @@ impl HostedRuntime {
         state.qualify(dom)?;
         let state = &mut *state;
         let retained = native_retained_bytes(
+            &state.source,
             &state.hosts,
             &state.children,
             &state.destruction,
-            &mut state.work,
-            limits.work,
+            (&mut state.work, limits.work),
             cancel,
             || Ok(()),
         )?;
@@ -2448,7 +2472,7 @@ mod constructor_settings_tests {
     }
 
     #[test]
-    fn settings_url_payload_refusal_and_exact_retry_keep_original_execution() {
+    fn settings_and_window_payload_refusal_and_exact_retry_keep_original_execution() {
         let cancel = AtomicBool::new(false);
         let mut limits = limits();
         let mut session = session(limits);
@@ -2551,7 +2575,8 @@ mod constructor_settings_tests {
             assert_eq!(creation_url, top_url);
             let exact = retained
                 + creation_url.retained_storage_usage().retained_bytes()
-                + top_url.retained_storage_usage().retained_bytes();
+                + top_url.retained_storage_usage().retained_bytes()
+                + surgeist_dom::hosted::DomHostedWindowNavigation::allocation_bytes();
             assert!(
                 state.hosts[0].top_levels[0]
                     .group

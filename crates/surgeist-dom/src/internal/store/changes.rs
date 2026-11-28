@@ -383,6 +383,12 @@ pub(super) fn sparse_difference(
                     #[cfg(test)]
                     written.pushed::<DomChange>();
                 }
+                if node.focused_area_designation() != current.focused_area_designation() {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFocusDesignation(DocumentId(id)));
+                    #[cfg(test)]
+                    written.pushed::<DomChange>();
+                }
                 if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
                     (node.kind(), current.kind())
                     && before.design_mode_enabled() != after.design_mode_enabled()
@@ -716,6 +722,10 @@ pub(super) fn full_difference(
                 if node.active_range() != current.active_range() {
                     source::formation::reserve(&mut changes, 1, budget, cancelled)?;
                     changes.push(DomChange::DocumentActiveRange(DocumentId(id)));
+                }
+                if node.focused_area_designation() != current.focused_area_designation() {
+                    source::formation::reserve(&mut changes, 1, budget, cancelled)?;
+                    changes.push(DomChange::DocumentFocusDesignation(DocumentId(id)));
                 }
                 if let (DomNodeKind::Document(before), DomNodeKind::Document(after)) =
                     (node.kind(), current.kind())

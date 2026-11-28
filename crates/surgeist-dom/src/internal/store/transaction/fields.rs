@@ -40,6 +40,7 @@ pub(in crate::internal::store) enum FieldUndo {
     Interactive(InteractiveGroup),
     Autofocus(AutofocusGroup),
     ActiveRange(crate::internal::range::DomActiveRangeState),
+    FocusedAreaDesignation(crate::internal::document::DomFocusedAreaDesignation),
     NativeObjectCount(usize),
     Children(Option<Group<NodeSequence<NodeId>, NodeSequenceFields>>),
     FullscreenGroup(
@@ -216,6 +217,12 @@ impl FieldUndo {
                 &mut node.document_fields_mut().expect("Document").active_range,
                 value,
             )),
+            Self::FocusedAreaDesignation(value) => {
+                let previous = node.document_fields_mut().map_or(value, |fields| {
+                    std::mem::replace(&mut fields.focused_area_designation, value)
+                });
+                Self::FocusedAreaDesignation(previous)
+            }
         }
     }
     #[cfg(test)]
@@ -852,6 +859,22 @@ scalar_guard!(
         let value = *value;
         drop(debit);
         Ok(FieldUndo::ActiveRange(value))
+    }
+);
+scalar_guard!(
+    focused_area_designation_mut,
+    crate::internal::document::DomFocusedAreaDesignation,
+    Overlay::FocusedAreaDesignation,
+    |n| if n.document_metadata().is_some() {
+        Ok(n.focused_area_designation())
+    } else {
+        Err(DomError::WrongNodeKind)
+    },
+    |_draft, _key, incoming, _| {
+        let (value, debit) = incoming.into_parts();
+        let value = *value;
+        drop(debit);
+        Ok(FieldUndo::FocusedAreaDesignation(value))
     }
 );
 scalar_guard!(

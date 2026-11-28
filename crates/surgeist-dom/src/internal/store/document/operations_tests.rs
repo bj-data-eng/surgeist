@@ -663,7 +663,7 @@ fn hosted(dom: &mut Dom, source: &mut DomHostedSource) -> DomHostedCreation {
             DomHostedCreationStep::NativeExecution(request) => {
                 let global = source.issue_global(request, &cancel()).unwrap();
                 source
-                    .seal_native_execution(request, global, 0, &cancel())
+                    .seal_native_execution(request, global, 0, None, &cancel())
                     .unwrap()
             }
             DomHostedCreationStep::MakeActive(request) => {

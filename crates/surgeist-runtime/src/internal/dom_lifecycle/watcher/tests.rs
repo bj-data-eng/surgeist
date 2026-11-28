@@ -375,6 +375,12 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     let mut hosted = session.hosted_execution();
     let owner = hosted.state().unwrap();
     let host = owner.borrow().hosts[0].id;
+    let original_member = {
+        let state = owner.borrow();
+        let group = state.hosts[0].top_levels[0].group.as_ref().unwrap();
+        let window = &group.clusters[0].agent.windows.rows[0];
+        Rc::downgrade(&window.groups[0].members[0])
+    };
     assert_eq!(
         hosted.window_focus_changed_during_navigation(&session.dom(), top.global(), &cancel),
         Ok(false)
@@ -397,21 +403,6 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
             Err(DomHostedRuntimeError::Binding)
         );
     }
-    {
-        // Seed this exact private row to distinguish retaining its current value
-        // from rebuilding the constructor default during destruction.
-        let mut state = owner.borrow_mut();
-        let (h, t, c, w) = state.find_window(top.global(), &cancel, || Ok(())).unwrap();
-        state.hosts[h].top_levels[t]
-            .group
-            .as_mut()
-            .unwrap()
-            .clusters[c]
-            .agent
-            .windows
-            .rows[w]
-            .focus_changed_during_navigation = true;
-    }
     let task = hosted
         .destroy_top_level(&mut session.dom(), top.navigable(), &cancel)
         .unwrap();
@@ -427,7 +418,7 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
     assert_eq!(counts(&hosted), (1, 1, 1));
     assert_eq!(
         hosted.window_focus_changed_during_navigation(&session.dom(), top.global(), &cancel),
-        Ok(true)
+        Ok(false)
     );
     assert!(
         owner
@@ -435,17 +426,13 @@ fn retired_window_retains_host_and_whole_session_until_canonical_clear_is_joined
             .find_global(top.global(), &cancel, |_| Ok(()))
             .is_err()
     );
-    assert!(
-        owner.borrow().hosts[0].top_levels[0]
-            .group
-            .as_ref()
-            .unwrap()
-            .clusters[0]
-            .agent
-            .windows
-            .rows[0]
-            .retired
-    );
+    {
+        let state = owner.borrow();
+        let group = state.hosts[0].top_levels[0].group.as_ref().unwrap();
+        let window = &group.clusters[0].agent.windows.rows[0];
+        assert!(window.retired);
+        assert!(original_member.ptr_eq(&Rc::downgrade(&window.groups[0].members[0])));
+    }
     assert!(matches!(
         hosted.destroy_host(&mut session.dom(), host, &cancel),
         Err(DomHostedRuntimeError::OperationPending)

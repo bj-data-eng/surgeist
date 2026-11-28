@@ -31,6 +31,10 @@ pub enum DomFocusedAreaDesignation {
     /// The actual fresh native constructor, or a qualified original controlled
     /// HTML constructor, established a null designation.
     KnownNull,
+    /// The exact Element designated in this Document.
+    Element(crate::internal::identity::NodeId),
+    /// This Document's own viewport was designated.
+    Viewport,
     /// Original designation history was not supplied by its producer.
     Unavailable,
 }

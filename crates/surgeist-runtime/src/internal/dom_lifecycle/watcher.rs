@@ -37,7 +37,7 @@ impl WindowBank {
 pub(super) struct NativeWindow {
     pub id: DomHostedGlobalId,
     pub retired: bool,
-    focus_changed_during_navigation: bool,
+    pub(super) navigation: surgeist_dom::hosted::DomHostedWindowNavigation,
     // HTML's initial positive-infinity timestamp is represented by its exact
     // never-activated state, not a finite zero or a sampled clock. The current
     // native input domain admits no trusted activation-triggering HTML input;
@@ -133,11 +133,14 @@ enum WatcherPhase {
     Removing,
 }
 impl NativeWindow {
-    pub(super) fn fresh(id: DomHostedGlobalId) -> Self {
+    pub(super) fn fresh(
+        id: DomHostedGlobalId,
+        navigation: surgeist_dom::hosted::DomHostedWindowNavigation,
+    ) -> Self {
         Self {
             id,
             retired: false,
-            focus_changed_during_navigation: false,
+            navigation,
             activation: NativeWindowActivation::NeverActivated,
             manager: HtmlCloseWatcherManager::fresh(),
             groups: Vec::new(),
@@ -331,6 +334,25 @@ pub(super) fn reserve_window(
         cancel,
     )
 }
+pub(super) fn window_navigation<'a>(
+    windows: &'a WindowBank,
+    global: DomHostedGlobalId,
+    work: &mut u64,
+    limit: u64,
+    cancel: &AtomicBool,
+    mut admit: impl FnMut() -> Result<(), DomHostedRuntimeError>,
+) -> Result<&'a surgeist_dom::hosted::DomHostedWindowNavigation, DomHostedRuntimeError> {
+    // The original Window is normally the row just created. A retry can
+    // reach an earlier row, so qualify the exact identity on every lookup.
+    for window in windows.rows.iter().rev() {
+        spend(work, limit, cancel)?;
+        admit()?;
+        if window.id == global && !window.retired {
+            return Ok(&window.navigation);
+        }
+    }
+    Err(DomHostedRuntimeError::Binding)
+}
 impl HostedState {
     pub(super) fn find_window(
         &mut self,
@@ -405,7 +427,7 @@ impl HostedRuntime {
             .and_then(|group| group.clusters.get(cluster))
             .and_then(|cluster| cluster.agent.windows.rows.get(window))
             .ok_or(DomHostedRuntimeError::Protocol)?;
-        Ok(record.focus_changed_during_navigation)
+        Ok(record.navigation.focus_changed())
     }
 
     pub(crate) fn service_dialog_watcher(
@@ -532,16 +554,17 @@ impl HostedRuntime {
             hosts,
             children,
             destruction,
+            source,
             work,
             limits,
             ..
         } = &mut *state;
         let retained = native_retained_bytes(
+            source,
             hosts,
             children,
             destruction,
-            work,
-            limits.work,
+            (work, limits.work),
             cancel,
             || {
                 lease
@@ -775,16 +798,17 @@ impl HostedRuntime {
             hosts,
             children,
             destruction,
+            source,
             work,
             limits,
             ..
         } = &mut *state;
         let retained = native_retained_bytes(
+            source,
             hosts,
             children,
             destruction,
-            work,
-            limits.work,
+            (work, limits.work),
             cancel,
             || {
                 lease

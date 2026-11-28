@@ -74,7 +74,8 @@ Existing captured and cached owners preserve their value. Subtree import,
 adoption, metadata edits, inactivity and hosted teardown do not initialize it
 again; old snapshots retain the original value after later edits or owner drop.
 The inline field shares the Document's ordinary staged and canonical storage
-admission. Created-Document change records cover its initialization.
+admission. Created-Document change records cover its initialization, and
+`DocumentFocusDesignation` records changes to existing Documents.
 
 The shared HTML removing step compares each actual invocation subject against
 its removal-time node-Document designation before Element-family hooks. A
@@ -91,10 +92,17 @@ and cumulative admission; dropping a wholly unpublished operation discards it.
 An already detached root runs no removing step. Inactivity or lack of a presenter
 cannot replace the missing original history.
 
-This qualification does not identify a positive focused area, resolve a viewport
-or focus chain, describe system focus, change Window state or authorize focus
-effects. No designation setter is exposed. Direct Document cloning, import and
-adoption remain unsupported.
+When the removed Element is the exact designation, the removing step stages
+the Document's own viewport and the reset of the original relevant Window's
+Navigation focus flag. Both publish with the tree edit. The removing step
+requires the Document's actual viewport association and the exact original
+Window owner, including when its flag is already false. An unavailable owner
+refuses the edit before publication. This step runs without focus movement or
+focus, blur or change events.
+
+Designation readback describes retained state. System focus and current focus
+resolution use their own qualified operations. Direct Document cloning, import
+and adoption remain unsupported.
 
 ## Captured Document focus chains
 

@@ -48,33 +48,27 @@ fn publish_local_html_entry(
     dom: &mut Dom,
     source: &mut DomHostedSource,
     prepared: &mut Option<DomHostedPreparedTopLevel>,
-) -> (DomHostedCreationLease, DocumentId, DomHostedGlobalId) {
+    with_window: bool,
+) -> (
+    DomHostedCreationLease,
+    DocumentId,
+    DomHostedGlobalId,
+    Option<DomHostedWindowNavigation>,
+) {
     let cancel = cancel();
-    let mut lease = dom
-        .begin_hosted_top_level_html(source, prepared, &cancel)
-        .unwrap();
-    let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(dom).unwrap() else {
-        panic!("expected policy request");
-    };
-    let policy = DomInitialPermissionsPolicy::new(
-        DomPermissionsPolicyValue::Enabled,
-        DomPermissionsPolicyValue::Enabled,
-    );
-    let mut publication = Some(
-        source
-            .seal_permissions_policy(request, policy, &cancel)
-            .unwrap(),
-    );
-    lease
-        .accept_permissions_policy(dom, source, &mut publication, &cancel)
-        .unwrap();
+    let mut lease = begin_local_html_execution(dom, source, prepared, &cancel);
     let DomHostedCreationStep::NativeExecution(request) = lease.step(dom).unwrap() else {
         panic!("expected execution request");
     };
     let global = source.issue_global(request, &cancel).unwrap();
+    let window = with_window.then(|| {
+        source
+            .create_window_navigation(request, global, &cancel)
+            .unwrap()
+    });
     let mut publication = Some(
         source
-            .seal_native_execution(request, global, 100, &cancel)
+            .seal_native_execution(request, global, 100, window.as_ref(), &cancel)
             .unwrap(),
     );
     lease
@@ -112,7 +106,61 @@ fn publish_local_html_entry(
     lease
         .accept_publication(dom, source, &mut publication, &cancel)
         .unwrap();
-    (lease, document, global)
+    (lease, document, global, window)
+}
+
+fn begin_local_html_execution(
+    dom: &mut Dom,
+    source: &mut DomHostedSource,
+    prepared: &mut Option<DomHostedPreparedTopLevel>,
+    cancel: &AtomicBool,
+) -> DomHostedCreationLease {
+    let mut lease = dom
+        .begin_hosted_top_level_html(source, prepared, cancel)
+        .unwrap();
+    let DomHostedCreationStep::PermissionsPolicy(request) = lease.step(dom).unwrap() else {
+        panic!("expected policy request");
+    };
+    let policy = DomInitialPermissionsPolicy::new(
+        DomPermissionsPolicyValue::Enabled,
+        DomPermissionsPolicyValue::Enabled,
+    );
+    let mut publication = Some(
+        source
+            .seal_permissions_policy(request, policy, cancel)
+            .unwrap(),
+    );
+    lease
+        .accept_permissions_policy(dom, source, &mut publication, cancel)
+        .unwrap();
+    lease
+}
+
+mod focus_removing_steps;
+
+fn finish_local_html_destruction(
+    dom: &mut Dom,
+    source: &mut DomHostedSource,
+    invocation: &mut DomHostedDestructionInvocation,
+    cancel: &AtomicBool,
+) {
+    let mut destruction = invocation.cleanup(dom, source, cancel).unwrap();
+    let DomHostedDestructionStep::EnqueueParentTask(request) = destruction.step(dom).unwrap()
+    else {
+        panic!("expected destruction enqueue");
+    };
+    let mut publication = Some(source.seal_destruction_queued(request, cancel).unwrap());
+    destruction
+        .accept_publication(dom, source, &mut publication, cancel)
+        .unwrap();
+    let DomHostedDestructionStep::Cleanup(request) = destruction.step(dom).unwrap() else {
+        panic!("expected destruction cleanup");
+    };
+    let mut publication = Some(source.seal_top_level_cleanup(request, cancel).unwrap());
+    destruction
+        .accept_publication(dom, source, &mut publication, cancel)
+        .unwrap();
+    destruction.finish(dom, source, cancel).unwrap();
 }
 
 #[test]
@@ -121,8 +169,8 @@ fn local_html_top_level_publishes_a_loading_current_entry_with_an_empty_tree() {
     let (mut dom, mut source, mut prepared) = prepared_top_level();
     let revision = dom.revision.0;
     let source_revision = source.revision().unwrap().0;
-    let (mut lease, document, global) =
-        publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    let (mut lease, document, global, _) =
+        publish_local_html_entry(&mut dom, &mut source, &mut prepared, false);
     assert_eq!(
         source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
         Err(DomError::SourceOperationPending.into())
@@ -176,8 +224,8 @@ fn local_html_top_level_publishes_a_loading_current_entry_with_an_empty_tree() {
 fn local_html_parser_qualification_rejects_foreign_mismatched_and_retired_authority() {
     let cancel = cancel();
     let (mut dom, mut source, mut prepared) = prepared_top_level();
-    let (mut lease, document, global) =
-        publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    let (mut lease, document, global, _) =
+        publish_local_html_entry(&mut dom, &mut source, &mut prepared, false);
     let creation = lease.finish(&mut dom, &mut source, &cancel).unwrap();
     let before_retirement = dom.snapshot();
     let (mut foreign_dom, foreign_source, _) = prepared_top_level();
@@ -204,23 +252,7 @@ fn local_html_parser_qualification_rejects_foreign_mismatched_and_retired_author
         source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
         Err(DomHostedError::StaleIdentity)
     );
-    let mut destruction = invocation.cleanup(&mut dom, &mut source, &cancel).unwrap();
-    let DomHostedDestructionStep::EnqueueParentTask(request) = destruction.step(&dom).unwrap()
-    else {
-        panic!("expected destruction enqueue");
-    };
-    let mut publication = Some(source.seal_destruction_queued(request, &cancel).unwrap());
-    destruction
-        .accept_publication(&mut dom, &mut source, &mut publication, &cancel)
-        .unwrap();
-    let DomHostedDestructionStep::Cleanup(request) = destruction.step(&dom).unwrap() else {
-        panic!("expected destruction cleanup");
-    };
-    let mut publication = Some(source.seal_top_level_cleanup(request, &cancel).unwrap());
-    destruction
-        .accept_publication(&mut dom, &mut source, &mut publication, &cancel)
-        .unwrap();
-    destruction.finish(&mut dom, &mut source, &cancel).unwrap();
+    finish_local_html_destruction(&mut dom, &mut source, &mut invocation, &cancel);
     assert_eq!(
         source.qualify_hosted_local_html_parser(&dom, document, global, &cancel),
         Err(DomHostedError::StaleIdentity)
@@ -430,7 +462,7 @@ fn incomplete_hosted_construction_refuses_before_consuming_observer_checkpoint()
     let global = source.issue_global(request, &c).unwrap();
     let mut publication = Some(
         source
-            .seal_native_execution(request, global, 100, &c)
+            .seal_native_execution(request, global, 100, None, &c)
             .unwrap(),
     );
     lease
@@ -517,7 +549,7 @@ fn complete_policy_receipt_preserves_independent_values_and_atomic_constructor_c
         let global = source.issue_global(request, &cancel()).unwrap();
         let mut execution = Some(
             source
-                .seal_native_execution(request, global, 100, &cancel())
+                .seal_native_execution(request, global, 100, None, &cancel())
                 .unwrap(),
         );
         lease
@@ -594,7 +626,7 @@ fn incomplete_and_expired_constructor_authority_never_substitutes_false_for_acti
     let global = source.issue_global(request, &c).unwrap();
     let mut execution = Some(
         source
-            .seal_native_execution(request, global, 100, &c)
+            .seal_native_execution(request, global, 100, None, &c)
             .unwrap(),
     );
     lease
@@ -849,7 +881,8 @@ fn hosted_embed_setup_refuses_attribute_and_tree_publication() {
 
     let cancel = cancel();
     let (mut dom, mut source, mut prepared) = prepared_top_level();
-    let (mut lease, document, _) = publish_local_html_entry(&mut dom, &mut source, &mut prepared);
+    let (mut lease, document, _, _) =
+        publish_local_html_entry(&mut dom, &mut source, &mut prepared, false);
     lease.finish(&mut dom, &mut source, &cancel).unwrap();
     let limits = DomSourceLimits::new(16_000_000, 200_000, 20_000, 64, 64, 64, 2);
 

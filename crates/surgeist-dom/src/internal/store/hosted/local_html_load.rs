@@ -126,6 +126,7 @@ impl DomHostedSource {
                 host: old.host,
                 context: old.context,
                 global: old.global,
+                window_navigation: old.window_navigation.clone(),
                 navigation_start: old.navigation_start,
                 policy: old.policy,
                 phase: DocumentPhase::InitialEntry {
