@@ -28,8 +28,9 @@ use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_runtime::{
     DomSession,
     element_task::{
-        DomElementTaskEventContext, DomElementTaskProgress, DomElementTaskRunLimits,
-        DomElementTaskRuntime, DomElementTaskRuntimeError, DomElementTaskRuntimeLimits,
+        DomElementTask, DomElementTaskEventContext, DomElementTaskProgress,
+        DomElementTaskRunLimits, DomElementTaskRuntime, DomElementTaskRuntimeError,
+        DomElementTaskRuntimeLimits,
     },
     event::{
         DomEventCallback, DomEventDispatchLimits, DomEventDispatchReceipt, DomEventDispatcher,
@@ -762,7 +763,46 @@ fn membership_removal_and_reopening_preserve_original_reset_without_removing_rep
 #[test]
 fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_failure() {
     for prevent in [true, false] {
-        let (mut session, _, _, subject) = fixture();
+        let (mut session, top, body, subject) = fixture();
+        let mut batch = DomBatch::new();
+        let other = batch.create_element_ns(top.document(), Namespace::html(), "dialog");
+        batch.insert_before(&other, body, None);
+        let other = session
+            .dom()
+            .apply(batch, &cancel())
+            .unwrap()
+            .created(&other)
+            .unwrap()
+            .unwrap();
+        open(&mut session, other);
+        let event = pending_event(
+            apply(&mut session, DomSourceEdit::close_dialog(other, None)),
+            DomSourceEventKind::BeforeToggle,
+        );
+        drop(service(
+            &mut session,
+            &event,
+            &mut dispatcher::<()>(),
+            &mut (),
+        ));
+        drop(complete(resume(&mut session, event.operation()).unwrap()));
+        let tasks = session.element_task_execution();
+        let sources = [
+            DomElementTaskSourceKind::UserInteraction,
+            DomElementTaskSourceKind::DomManipulation,
+        ];
+        let [close, toggle] = sources.map(|source| tasks.pending_task(source, 0).unwrap().unwrap());
+        assert!(close.dialog_close().is_some());
+        assert!(matches!(toggle, DomElementTask::DialogToggle(_)));
+        assert_eq!(close.id().target(), other);
+        assert_eq!(toggle.id().target(), other);
+        assert_eq!(
+            close.queue_association().unwrap().document(),
+            top.document()
+        );
+        assert_eq!(toggle.queue_association(), close.queue_association());
+        assert_eq!(tasks.pending_total_tasks().unwrap(), 2);
+
         open(&mut session, subject);
         let mut context = mutation_context(&session, Mutation::Retire, prevent);
         let mut registry = mutation_registry(&mut session, subject);
@@ -807,18 +847,14 @@ fn cancel_retirement_finishes_started_path_and_once_before_native_final_reset_fa
             "actual retired Cancel terminal: {terminal:?}"
         );
         assert!(session.dom().pending_source_edit().is_none());
-        assert_eq!(
-            session
-                .element_task_execution()
-                .pending_total_tasks()
-                .unwrap(),
-            0
-        );
+        let remaining = sources.map(|source| tasks.pending_task(source, 0).unwrap().unwrap());
+        assert_eq!(remaining, [close, toggle]);
+        assert_eq!(tasks.pending_total_tasks().unwrap(), 2);
     }
 }
 #[test]
 fn ordinary_removal_detach_adoption_and_failed_retirement_preserve_live_final_reset() {
-    for case in 0..4 {
+    for case in 0..5 {
         let (mut session, _, _, subject) = fixture();
         // Adoption stays in this canonical owner; a second real top-level
         // supplies its independently associated Document.
@@ -830,22 +866,56 @@ fn ordinary_removal_detach_adoption_and_failed_retirement_preserve_live_final_re
         let snapshot = session.snapshot();
         let html = snapshot.node(target.document().node()).unwrap().children()[0];
         let body = snapshot.node(html).unwrap().children()[1];
+        if case == 4 {
+            destroy_top(&mut session, &mut hosted, target);
+            assert!(
+                !session
+                    .snapshot()
+                    .document(target.document())
+                    .unwrap()
+                    .is_fully_active()
+                    .unwrap()
+            );
+        }
         open(&mut session, subject);
         let mutation = match case {
             0 => Mutation::Remove,
             1 => Mutation::Detach,
-            2 => Mutation::Adopt(body),
+            2 | 4 => Mutation::Adopt(body),
             _ => Mutation::FailedRetire,
         };
         let mut context = mutation_context(&session, mutation, true);
         let mut registry = mutation_registry(&mut session, subject);
         let result = DocumentString::from("live receiver");
         let request = start_request(&mut session, subject, Some(result.clone()));
+        assert!(
+            session
+                .snapshot()
+                .node(subject)
+                .unwrap()
+                .as_dialog()
+                .unwrap()
+                .force_close_watcher_enabled()
+        );
         let receipt = service(&mut session, &request, &mut registry, &mut context);
         assert!(receipt.default_prevented());
         assert!(receipt.failures().is_empty());
         drop(complete(resume(&mut session, request.operation()).unwrap()));
         assert_surviving_reset(&session, subject, Some(&result));
+        if matches!(mutation, Mutation::Adopt(_)) {
+            let snapshot = session.snapshot();
+            let adopted = snapshot.node(subject).unwrap();
+            assert_eq!(adopted.owner_document(), Some(target.document()));
+            assert_eq!(adopted.parent(), Some(body));
+            assert_eq!(
+                snapshot
+                    .document(target.document())
+                    .unwrap()
+                    .is_fully_active()
+                    .unwrap(),
+                case == 2
+            );
+        }
         if case == 3 {
             assert!(matches!(
                 context.destruction,
