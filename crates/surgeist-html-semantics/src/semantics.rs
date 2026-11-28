@@ -480,6 +480,8 @@ pub enum HtmlSemanticQuery {
     CheckableInputValueMissing,
     /// Required-current-value missingness for Text/Search/Telephone/URL/Email/Password inputs.
     InputTextValueMissing,
+    /// Required File Upload missingness from the captured selected-file list.
+    InputFileValueMissing,
     /// Intrinsic type-mismatch flag of the captured Email Input current value.
     InputEmailTypeMismatch,
     /// Required-current-value missingness for HTML textarea.
@@ -664,6 +666,9 @@ impl HtmlSemanticQuery {
             }
             Self::InputTextValueMissing => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-input-required"
+            }
+            Self::InputFileValueMissing => {
+                "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#file-upload-state-(type=file)"
             }
             Self::InputEmailTypeMismatch => {
                 "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#email-state-(type=email)"
@@ -956,6 +961,7 @@ pub enum HtmlSemanticMissing {
     ProducesCssBox(HtmlCaptureSubjectId),
     LanguageFallback(HtmlCaptureSubjectId),
     CurrentValue(HtmlCaptureSubjectId),
+    InputFileSelection(HtmlCaptureSubjectId),
     OutputDefaultValueOverride(HtmlCaptureSubjectId),
     SlotAssignment(HtmlCaptureSubjectId),
     ShadowHost(HtmlCaptureSubjectId),
@@ -1142,6 +1148,7 @@ pub enum HtmlSemanticFact {
     SelectValueMissing(HtmlSemanticValue<bool>),
     CheckableInputValueMissing(HtmlSemanticValue<bool>),
     InputTextValueMissing(HtmlSemanticValue<bool>),
+    InputFileValueMissing(HtmlSemanticValue<bool>),
     InputEmailTypeMismatch(HtmlSemanticValue<bool>),
     TextareaValueMissing(HtmlSemanticValue<bool>),
     ControlAutocomplete(HtmlSemanticValue<HtmlControlAutocomplete>),
@@ -1759,43 +1766,7 @@ impl<'a> HtmlSemanticSession<'a> {
         namespace: Option<&str>,
         local: &str,
     ) -> Result<Option<&'a Attribute>, HtmlSemanticFailure> {
-        for attribute in element.attributes().iter() {
-            self.charge(1)?;
-            let namespace_matches = match (attribute.name().namespace().uri(), namespace) {
-                (None, None) => true,
-                (Some(uri), Some(expected)) if uri.len() == expected.len() => {
-                    let mut equal = true;
-                    for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-                        self.charge(1)?;
-                        if *unit != u16::from(byte) {
-                            equal = false;
-                            break;
-                        }
-                    }
-                    equal
-                }
-                _ => false,
-            };
-            if !namespace_matches {
-                continue;
-            }
-            let units = attribute.name().local_name().code_units();
-            if units.len() != local.len() {
-                continue;
-            }
-            let mut equal = true;
-            for (unit, byte) in units.iter().zip(local.bytes()) {
-                self.charge(1)?;
-                if *unit != u16::from(byte) {
-                    equal = false;
-                    break;
-                }
-            }
-            if equal {
-                return Ok(Some(attribute));
-            }
-        }
-        Ok(None)
+        scan::attribute_with(element, namespace, local, |units| self.charge(units))
     }
     fn html_namespace(
         &mut self,
@@ -3159,6 +3130,15 @@ impl<'a> HtmlSemanticSession<'a> {
                                     self.input_text_value_missing(&request.subject, element)?
                                 })
                             }
+                            HtmlSemanticQuery::InputFileValueMissing => {
+                                HtmlSemanticFact::InputFileValueMissing(if foreign {
+                                    HtmlSemanticValue::Unsupported(
+                                        HtmlSemanticUnsupported::ForeignNamespace,
+                                    )
+                                } else {
+                                    self.input_file_value_missing(&request.subject, element)?
+                                })
+                            }
                             HtmlSemanticQuery::InputEmailTypeMismatch => {
                                 HtmlSemanticFact::InputEmailTypeMismatch(if foreign {
                                     HtmlSemanticValue::Unsupported(
@@ -3604,6 +3584,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         HtmlSemanticQuery::InputTextValueMissing => {
                             HtmlSemanticFact::InputTextValueMissing(HtmlSemanticValue::Inapplicable)
+                        }
+                        HtmlSemanticQuery::InputFileValueMissing => {
+                            HtmlSemanticFact::InputFileValueMissing(HtmlSemanticValue::Inapplicable)
                         }
                         HtmlSemanticQuery::InputEmailTypeMismatch => {
                             HtmlSemanticFact::InputEmailTypeMismatch(

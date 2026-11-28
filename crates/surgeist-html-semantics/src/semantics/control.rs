@@ -7,13 +7,17 @@ use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::accounting::HtmlAccountingFault;
-use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
+use surgeist_html::accounting::{HtmlCapScope, HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
 use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
 use surgeist_html::{
-    elements::form::{HtmlNativeFormAssociationKind, native_labelability_with},
+    elements::{
+        form::{HtmlNativeFormAssociationKind, native_labelability_with},
+        input::HtmlInputTypeCursor,
+    },
     vocabulary::KnownHtmlElement,
 };
+use surgeist_ledger::Charge;
 
 /// Evidence of the actual association phase at this capture's host revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,7 +106,7 @@ struct ListedReadback {
     count: usize,
 }
 
-/// All input elements have these internal slots. Checkedness has control effects
+/// Current Input slots. Checkedness has control effects
 /// in Checkbox/Radio states, and indeterminateness has effects in Checkbox state.
 /// Each `None` is unavailable evidence, independently of the other slots.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -112,6 +116,7 @@ pub struct HtmlInputControlState {
     dirty_checkedness: Option<bool>,
     dirty_value: Option<bool>,
     indeterminateness: Option<bool>,
+    file_selection_empty: Option<bool>,
 }
 impl HtmlInputControlState {
     pub fn new(
@@ -127,6 +132,7 @@ impl HtmlInputControlState {
             dirty_checkedness,
             dirty_value,
             indeterminateness,
+            file_selection_empty: None,
         }
     }
     pub fn subject(&self) -> &HtmlCaptureSubjectId {
@@ -143,6 +149,18 @@ impl HtmlInputControlState {
     }
     pub fn indeterminateness(&self) -> Option<bool> {
         self.indeterminateness
+    }
+
+    /// Supplies known emptiness of the current selected-file list.
+    /// The fact is qualified against the captured File Upload state when admitted.
+    pub fn with_file_selection_empty(mut self, empty: bool) -> Self {
+        self.file_selection_empty = Some(empty);
+        self
+    }
+
+    /// `None` means the selected-file list was unobserved.
+    pub fn file_selection_empty(&self) -> Option<bool> {
+        self.file_selection_empty
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -348,6 +366,32 @@ impl ScanError for HtmlControlFactsError {
         Self::Accounting(fault)
     }
 }
+
+struct InputTypeValidation<'a>(&'a mut ScanMeter<HtmlControlFactsError>);
+
+impl Charge<HtmlWork, HtmlResource> for InputTypeValidation<'_> {
+    type Stop = HtmlControlFactsError;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), Self::Stop> {
+        // A cursor advance performs one row, length or comparison step.
+        match batch {
+            [
+                HtmlChange::Work(HtmlWork::RecordVisit, 1)
+                | HtmlChange::Work(HtmlWork::InspectByte, 3),
+            ] => self.0.charge(1),
+            _ => Err(HtmlControlFactsError::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            )),
+        }
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Self::Stop> {
+        Err(HtmlControlFactsError::Accounting(
+            HtmlAccountingFault::UnexpectedChange,
+        ))
+    }
+}
+
 /// The topmost ancestor of `subject`, or `None` when an ancestor is unavailable.
 fn validated_root(
     validation: &mut ScanMeter<HtmlControlFactsError>,
@@ -496,6 +540,20 @@ impl HtmlControlFacts {
                 return Err(HtmlControlFactsError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
+            }
+            if fact.file_selection_empty.is_some() {
+                let raw = scan::attribute_with(element, None, "type", |n| validation.charge(n))?;
+                let mut cursor =
+                    HtmlInputTypeCursor::new(raw.map(|attribute| attribute.value().code_units()));
+                let mut work = InputTypeValidation(&mut validation);
+                while cursor.result().is_none() {
+                    cursor.advance(&mut work)?;
+                }
+                if cursor.result() != Some(HtmlInputType::File) {
+                    return Err(HtmlControlFactsError::InapplicableSubject(
+                        fact.subject.clone(),
+                    ));
+                }
             }
         }
         let mut option_index = FactIndex::new(
@@ -1619,6 +1677,26 @@ impl<'a> HtmlSemanticSession<'a> {
         })();
         self.release_scratch(&scratch);
         result
+    }
+
+    pub(super) fn input_file_selection_empty(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
+        self.charge(1)?;
+        let empty = self.context.controls().and_then(|facts| {
+            facts
+                .input_index
+                .position(subject)
+                .and_then(|position| facts.inputs.get(position))
+                .and_then(HtmlInputControlState::file_selection_empty)
+        });
+        Ok(match empty {
+            Some(empty) => HtmlSemanticValue::Known(empty),
+            None => {
+                HtmlSemanticValue::Missing(HtmlSemanticMissing::InputFileSelection(subject.clone()))
+            }
+        })
     }
 
     pub(super) fn control_flag(

@@ -1769,6 +1769,12 @@ on Button, Fieldset, Input, Output, Select and Textarea. A barred control still
 has this flag. The capture carries the Boolean without copying the message.
 An applicable control without a qualified observation reports missing evidence.
 
+`InputFileValueMissing` checks whether a captured File Input has `required`
+present and an empty native selected-file list. The capture carries just the
+list's emptiness. A required Input with unavailable selection evidence reports
+missing evidence. Candidacy remains a separate result even for a disabled
+File Input.
+
 `InputEmailTypeMismatch` evaluates the same capture's exact current Email
 value, using the single-address or list grammar selected by `multiple`.
 The empty current value has no mismatch. A comma in a nonempty list requires
