@@ -409,9 +409,9 @@ work allowance; refusal retains the original operation and no phantom result.
 
 The original method retains one complete HTML focusing child. Actual autofocus
 selects the subject; otherwise the HTML delegate protocols run their separate
-ordinary-descendant passes in the same DOM operation. Empty traversals return
-null and select the subject. An unavailable descendant query returns a precise
-`FocusDelegate` request, retaining the actual root, queried node, language step
+ordinary-descendant passes in the same DOM operation. Empty and non-Element-only
+traversals return null and select the subject. An unavailable Element query
+returns a precise `FocusDelegate` request, retaining the actual root, queried node, language step
 and original occurrence across retry. Runtime reports the missing query without
 inventing a focusability observation or acknowledging called resolution.
 

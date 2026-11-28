@@ -177,11 +177,11 @@ fn autofocus_pass_uses_actual_svg_presence_before_any_dialog_sequential_query() 
 }
 
 #[test]
-fn fallback_retains_first_non_element_query_after_full_autofocus_pass_exhaustion() {
+fn fallback_advances_past_text_and_retains_first_element_query_after_autofocus_pass() {
     let (dom, root, descendants, _) = fixture(false);
     let d = draft(&dom);
     let root = d.resolve(root.into()).unwrap();
-    let text = d.resolve(descendants[0].into()).unwrap();
+    let first_element = d.resolve(descendants[1].into()).unwrap();
     assert!(!d.dialog_delegate_null_available(root, &cancel()).unwrap());
     assert_eq!(d.select_temporary_bytes.load(Ordering::Relaxed), 0);
     let mut call = DelegateFrame::new(&d, root);
@@ -190,7 +190,7 @@ fn fallback_retains_first_non_element_query_after_full_autofocus_pass_exhaustion
         pending(&call),
         (
             root,
-            text,
+            first_element,
             crate::internal::source::DomSourceFocusDelegateStep::Focus(
                 FA::ReadSequentiallyFocusable
             )

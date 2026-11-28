@@ -177,8 +177,10 @@ runs the HTML-owned delegate protocols with two separate ordinary-descendant
 passes. An admitted indexed ancestor stack preserves preorder with linear work
 and storage proportional to depth. Actual shadow-root selection follows the
 producer; ordinary traversal does not enter shadow or hosted relations implicitly.
-An empty descendant domain completes both scans and selects the subject.
-Unknown focusability or called-area resolution retains a `FocusDelegate` request
+Ordinary non-Element descendants have no sequential focusability or resolved area.
+Both scans still visit them in source order. An empty or non-Element-only
+descendant domain completes both scans and selects the subject.
+Unknown Element focusability or called-area resolution retains a `FocusDelegate` request
 with its actual root, queried node, step and original operation occurrence.
 Checkpoint refusal, cancellation and lease replacement preserve the original
 traversal and cumulative admission; they do not supply missing facts.

@@ -1366,6 +1366,15 @@ mod delegates;
 
 #[test]
 fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_delegate_traversals() {
+    assert_inert_dialog_without_focusable_descendants(false);
+}
+
+#[test]
+fn enabled_inert_dialog_completes_after_non_element_delegate_traversals() {
+    assert_inert_dialog_without_focusable_descendants(true);
+}
+
+fn assert_inert_dialog_without_focusable_descendants(include_character_data: bool) {
     use DomPermissionsPolicyValue::Enabled;
     let (mut session, top) = headless_top();
     let document = top.document();
@@ -1416,9 +1425,19 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
         )
         .unwrap();
     assert!(matches!(changed, DomSourceDriveProgress::Complete(_)));
+    let mut children = Vec::new();
+    if include_character_data {
+        let mut batch = DomBatch::new();
+        let text = batch.create_text(document, "visible Dialog text");
+        let comment = batch.create_comment(document, "ordinary Dialog comment");
+        batch.insert_before(&text, subject, None);
+        batch.insert_before(&comment, subject, None);
+        let commit = session.dom().apply(batch, &cancel()).unwrap();
+        children.extend([text, comment].map(|child| commit.created(&child).unwrap().unwrap()));
+    }
     let ready = session.snapshot();
     let node = ready.node(subject).unwrap();
-    assert!(node.children().is_empty());
+    assert_eq!(node.children(), children);
     assert_eq!(node.hosted_shadow_root(), None);
     assert_eq!(node.attribute(&"inert".into()), Some(&"".into()));
     assert_eq!(node.attribute(&"autofocus".into()), None);
@@ -1445,8 +1464,8 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
     );
     let mut calls = Vec::new();
     // HTML877d60113–60159 runs the autofocus-delegate traversal, then the
-    // ordinary focus-delegate traversal. Both visit this actual empty ordinary
-    // descendant domain and return null. HTML877d46762–46779 then selects the
+    // ordinary focus-delegate traversal. The ordinary descendants have none of
+    // the focusable-area roles. HTML877d46762–46779 then selects the
     // subject; its own inert makes called focusing a no-change path, and its
     // actual same-origin top Document permits the existing autofocus tail.
     let progress = drive(
@@ -1479,7 +1498,7 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
     let done = match progress {
         DomSourceDriveProgress::Complete(done) => done,
         other => {
-            panic!("empty delegate traversals must let the real inert Dialog complete: {other:?}")
+            panic!("no focusable descendants must let the inert Dialog complete: {other:?}")
         }
     };
     assert!(!done.cancellation_requested());
@@ -1498,7 +1517,7 @@ fn enabled_same_origin_inert_dialog_without_autofocus_completes_after_empty_dele
     );
     let node = shown.node(subject).unwrap();
     assert_eq!(node.owner_document(), Some(document));
-    assert!(node.children().is_empty());
+    assert_eq!(node.children(), children);
     assert_eq!(node.hosted_shadow_root(), None);
     assert_eq!(node.attribute(&"autofocus".into()), None);
     assert_eq!(node.attribute(&"inert".into()), Some(&"".into()));
