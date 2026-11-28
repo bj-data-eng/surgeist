@@ -925,7 +925,10 @@ impl HostedRuntime {
         lease: &mut surgeist_dom::source::DomSourceLease<'_>,
         request: surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest,
         cancel: &AtomicBool,
-    ) -> Result<surgeist_dom::source::DomSourceCompletion, DomHostedRuntimeError> {
+    ) -> Result<
+        surgeist_dom::source::DomSourceCompletion,
+        crate::internal::dom_source::DomSourceRuntimeError,
+    > {
         let owner = self.state()?;
         let mut state = owner
             .try_borrow_mut()
@@ -953,7 +956,7 @@ impl HostedRuntime {
             .checked_add(count)
             .is_none_or(|total| total > state.limits.tasks)
         {
-            return Err(DomHostedRuntimeError::Admission);
+            return Err(DomHostedRuntimeError::Admission.into());
         }
         state.reserve_invocations(count, cancel)?;
         let retained = state.source_retained_bytes(lease, cancel)?;
@@ -976,13 +979,13 @@ impl HostedRuntime {
             .as_mut()
             .ok_or(DomHostedRuntimeError::Protocol)?;
         if group.traversal.traversable != Some(request.traversable()) {
-            return Err(DomHostedRuntimeError::Binding);
+            return Err(DomHostedRuntimeError::Binding.into());
         }
         let initiating_loop = group.clusters[c].agent.event_loop.clone();
         history::reserve_traversal(&mut group.traversal, retained, count, *limits, work, cancel)?;
         let (completion, handoffs) = lease
             .publish_hosted_child_removals(source, request, cancel)
-            .map_err(DomHostedRuntimeError::Dom)?;
+            .map_err(crate::internal::dom_source::DomSourceRuntimeError::form_reset_publication)?;
         for handoff in handoffs {
             let (invocation, history) = handoff.into_parts();
             destruction.retain(invocation, Some(history.operation()));

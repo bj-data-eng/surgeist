@@ -275,31 +275,83 @@ pub(super) fn attached_form_reset_removes_a_real_hosted_output_child() {
 }
 
 pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
-    use surgeist_dom::edit::DomChange;
+    hosted_form_reset_admission(None);
+}
 
-    let (session, top) = reset_session();
+pub(super) fn hosted_form_reset_joins_stylesheets_in_both_orders() {
+    for styles_first in [true, false] {
+        hosted_form_reset_admission(Some(styles_first));
+    }
+}
+
+fn hosted_form_reset_admission(styles_first: Option<bool>) {
+    use surgeist_cssom::accounting::{CssChange, CssFront, CssHostScope, CssLimits, CssWork};
+    use surgeist_cssom::{CssomError, CssomStore};
+    use surgeist_dom::edit::DomChange;
+    use surgeist_runtime::style::DomStyleRuntimeError;
+
+    let (mut session, top) = reset_session();
+    let style_root = top.document().node();
+    let mut styles = session.style_execution();
+    let cssom_ledger = styles_first.map(|_| {
+        let ledger = surgeist_ledger::Operation::new(
+            "form-reset-cssom",
+            CssLimits::unlimited(),
+            1 + CssFront::ALL.len(),
+        )
+        .unwrap()
+        .share();
+        let host = CssHostScope::open(ledger.clone(), ledger.root()).unwrap();
+        styles
+            .bind_root(
+                &session.dom(),
+                "form-reset-mixed".into(),
+                &mut Some(surgeist_dom::style::DomStyleCssomRoot::new(
+                    style_root,
+                    CssomStore::with_host(Default::default(), Default::default(), host).unwrap(),
+                )),
+                &cancel(),
+            )
+            .unwrap();
+        ledger
+    });
     let mut host = attach_reset_guest(session, top, Arc::new(cancel()));
     let permit = host.permit().unwrap();
-    assert_eq!(
-        observe(
-            &mut host,
-            &permit,
-            r#"(() => {
-                const add = (parent, tag) => parent.appendChild(document.createElement(tag));
-                const form = add(document.body, 'form');
-                const input = add(form, 'input');
-                input.defaultValue = 'reset value';
-                input.value = 'dirty';
-                const output = add(form, 'output');
-                output.defaultValue = 'reset output';
-                output.value = 'dirty output';
-                return [add(output, 'iframe'), add(output, 'iframe')].every(frame =>
-                    frame.contentDocument !== null && frame.contentWindow !== null
-                ) ? 'ok' : 'real hosted children are required';
-            })()"#,
-        ),
-        "ok",
-    );
+    let order = match styles_first {
+        Some(true) => "first",
+        Some(false) => "last",
+        None => "none",
+    };
+    let fixture = [
+        "globalThis.sheetOrder = '",
+        order,
+        "'; ",
+        r#"(() => {
+            const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+            const form = add(document.body, 'form');
+            const input = add(form, 'input');
+            input.defaultValue = 'reset value';
+            input.value = 'dirty';
+            const output = add(form, 'output');
+            output.defaultValue = 'reset output';
+            output.value = 'dirty output';
+            const addStyles = () => {
+                for (const color of ['red', 'blue']) {
+                    const sheet = document.createElement('style');
+                    sheet.textContent = 'p { color: ' + color + '; }';
+                    output.appendChild(sheet);
+                }
+            };
+            if (sheetOrder === 'first') addStyles();
+            const frames = [add(output, 'iframe'), add(output, 'iframe')];
+            if (sheetOrder === 'last') addStyles();
+            return frames.every(frame =>
+                frame.contentDocument !== null && frame.contentWindow !== null
+            ) ? 'ok' : 'real hosted children are required';
+        })()"#,
+    ]
+    .concat();
+    assert_eq!(observe(&mut host, &permit, &fixture,), "ok",);
     let mut session = host.stop().into_session().unwrap();
     let cancel = cancel();
     let mut hosted = session.hosted_execution();
@@ -327,13 +379,19 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
     let &[input, output] = initial.node(form).unwrap().children() else {
         panic!("original Form control order");
     };
-    let frames: Vec<_> = initial
-        .node(output)
-        .unwrap()
-        .children()
+    let output_children = initial.node(output).unwrap().children().to_vec();
+    let frames: Vec<_> = output_children
         .iter()
         .copied()
-        .filter(|node| initial.node(*node).unwrap().as_element().is_some())
+        .filter(|node| {
+            initial
+                .node(*node)
+                .unwrap()
+                .as_element()
+                .and_then(|element| element.child_navigable())
+                .flatten()
+                .is_some()
+        })
         .collect();
     assert_eq!(frames.len(), 2);
     let contents = |snapshot: &DomSnapshot, frame| {
@@ -357,7 +415,19 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
     let input_value = |snapshot: &DomSnapshot| {
         String::from_utf16(snapshot.node(input).unwrap().as_input().unwrap().value()).unwrap()
     };
-    let output_children = initial.node(output).unwrap().children().to_vec();
+    let style_nodes: Vec<_> = output_children
+        .iter()
+        .copied()
+        .filter(|node| initial.node(*node).unwrap().as_style().is_some())
+        .collect();
+    let original_sheets = styles.snapshot(style_root).unwrap();
+    assert_eq!(
+        style_nodes.len(),
+        if styles_first.is_some() { 2 } else { 0 }
+    );
+    if let Some(original) = &original_sheets {
+        assert_eq!(original.sheets().len(), style_nodes.len());
+    }
     assert_eq!(input_value(&initial), "dirty");
 
     let mut policy = limits().hosted;
@@ -433,6 +503,11 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
             assert_eq!(contents(snapshot, frame), Some(child));
             assert_eq!(snapshot.node(frame).unwrap().parent(), Some(output));
         }
+        if let Some(original) = &original_sheets {
+            let current = styles.snapshot(style_root).unwrap().unwrap();
+            assert_eq!(current.revision(), original.revision());
+            assert_eq!(current.sheets(), original.sheets());
+        }
     };
     unchanged(&refused);
     assert_eq!(
@@ -470,9 +545,59 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
     ));
     unchanged(&session.snapshot());
 
+    assert!(
+        source
+            .resume(
+                &mut session.dom(),
+                operation,
+                source_limits,
+                &mut services,
+                &AtomicBool::new(true),
+            )
+            .is_err()
+    );
+    unchanged(&session.snapshot());
+
     hosted
         .set_limits(&mut session.dom(), limits().hosted, &cancel)
         .unwrap();
+    if let Some(ledger) = cssom_ledger {
+        let root = ledger.root();
+        let spent = ledger.usage(root).unwrap().work(CssWork::CensusRun);
+        let caps = CssLimits::from_fn(
+            |work| {
+                if work == CssWork::CensusRun {
+                    spent
+                } else {
+                    u64::MAX
+                }
+            },
+            |_| u64::MAX,
+        );
+        ledger.set_limits(root, caps).unwrap();
+        let refusal = source.resume(
+            &mut session.dom(),
+            operation,
+            source_limits,
+            &mut services,
+            &cancel,
+        );
+        let Err(DomSourceDriveError::Source(DomSourceRuntimeError::Style(
+            DomStyleRuntimeError::Cssom(CssomError::Accounting(error)),
+        ))) = refusal
+        else {
+            panic!("CSSOM must refuse before the Form reset publishes: {refusal:?}");
+        };
+        let refused_charge = error.host_refusal().unwrap();
+        assert_eq!(refused_charge.scope(), root);
+        assert!(matches!(
+            refused_charge.change(),
+            CssChange::Work(CssWork::CensusRun, _)
+        ));
+        assert_eq!(refused_charge.limit(), spent);
+        unchanged(&session.snapshot());
+        ledger.set_limits(root, CssLimits::unlimited()).unwrap();
+    }
     let DomSourceDriveProgress::Complete(done) = source
         .resume(
             &mut session.dom(),
@@ -498,6 +623,37 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
         assert!(changes.changes().contains(&DomChange::ElementState(node)));
     }
     assert_eq!(input_value(&published), "reset value");
+    let &[output_text] = published.node(output).unwrap().children() else {
+        panic!("Output must contain only the restored default text");
+    };
+    let DomNodeKind::Text(text) = published.node(output_text).unwrap().kind() else {
+        panic!("the restored Output value must be Text");
+    };
+    assert_eq!(
+        text.code_units(),
+        "reset output".encode_utf16().collect::<Vec<_>>()
+    );
+    if let Some(original) = &original_sheets {
+        let current = styles.snapshot(style_root).unwrap().unwrap();
+        assert_eq!(current.revision().value(), original.revision().value() + 1);
+        assert!(current.sheets().is_empty());
+        for style in style_nodes {
+            assert_eq!(initial.node(style).unwrap().parent(), Some(output));
+            let detached = published.node(style).unwrap();
+            assert_eq!(detached.parent(), None);
+            assert!(detached.as_style().unwrap().sheet().unwrap().is_none());
+            let old = initial
+                .node(style)
+                .unwrap()
+                .as_style()
+                .unwrap()
+                .sheet()
+                .unwrap()
+                .unwrap();
+            assert!(original.sheets().contains(old.id()));
+            assert!(current.sheet(old.id()).unwrap().inputs().owner.is_none());
+        }
+    }
     for (frame, child) in frames.into_iter().zip(&children) {
         assert_eq!(contents(&published, frame), None);
         let nav = published.hosted_navigable(*child).unwrap();
@@ -528,7 +684,7 @@ pub(super) fn hosted_form_reset_admits_every_removal_before_publication() {
     }
 }
 
-pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate_join() {
+pub(super) fn form_reset_removes_bound_stylesheet_with_controls() {
     use surgeist_cssom::CssomStore;
     use surgeist_dom::style::DomStyleCssomRoot;
 
@@ -554,6 +710,9 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
             &permit,
             r#"(() => {
         const add = (parent, tag) => parent.appendChild(document.createElement(tag));
+        const retained = document.createElement('style');
+        retained.textContent = 'div { color: blue }';
+        document.head.appendChild(retained);
         const form = add(document.body, 'form');
         const input = add(form, 'input');
         input.defaultValue = 'default input';
@@ -564,25 +723,99 @@ pub(super) fn form_reset_releases_its_lock_when_a_stylesheet_requires_a_separate
         const style = document.createElement('style');
         style.textContent = 'p { color: red }';
         output.appendChild(style);
-        globalThis.refusedFormReset = form;
+        let cancel = true;
+        let events = 0;
+        form.addEventListener('reset', event => {
+            if (event.isTrusted && event.cancelable) events++;
+            form.reset();
+            if (cancel) event.preventDefault();
+        });
+        globalThis.formWithSheet = {
+            form, input, output, style, events: () => events,
+            allow: () => { cancel = false; }
+        };
         return 'ok';
     })()"#
         ),
         "ok"
     );
     let sheets = styles.snapshot(root).unwrap().unwrap();
-    assert_eq!(sheets.sheets().len(), 1);
-    assert_refused_form_reset_releases_source(
-        &mut host,
-        &permit,
-        DomError::StyleCompositionRequired(
-            surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet,
+    let [first, second] = sheets.sheets() else {
+        panic!("the original root must contain both sheets");
+    };
+    let original = host.snapshot().unwrap();
+    let style = original
+        .nodes()
+        .find(|&id| {
+            let node = original.node(id).unwrap();
+            node.as_style().is_some()
+                && node
+                    .parent()
+                    .is_some_and(|parent| original.node(parent).unwrap().as_output().is_some())
+        })
+        .unwrap();
+    let removed = original
+        .node(style)
+        .unwrap()
+        .as_style()
+        .unwrap()
+        .sheet()
+        .unwrap()
+        .unwrap();
+    let retained = if first == removed.id() {
+        second
+    } else {
+        assert_eq!(second, removed.id());
+        first
+    };
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const {form, input, output, style, events} = formWithSheet;
+                form.reset();
+                return events() === 1 && input.value === 'dirty input' &&
+                    style.parentNode === output ? 'ok' : 'canceled reset changed controls';
+            })()"#
         ),
+        "ok"
     );
     assert_eq!(
-        styles.snapshot(root).unwrap().unwrap().sheets(),
-        sheets.sheets()
+        styles.snapshot(root).unwrap().unwrap().revision(),
+        sheets.revision()
     );
+    let before = host.snapshot().unwrap();
+    assert_eq!(
+        observe(
+            &mut host,
+            &permit,
+            r#"(() => {
+                const {form, input, output, style, events, allow} = formWithSheet;
+                allow();
+                if (form.reset() !== undefined || events() !== 2) return 'reset dispatch';
+                return input.value === 'default input' && output.value === 'default output' &&
+                    style.parentNode === null ? 'ok' : 'reset did not replace the Output';
+            })()"#
+        ),
+        "ok"
+    );
+    let after = host.snapshot().unwrap();
+    assert_eq!(
+        after.stamp().revision().get(),
+        before.stamp().revision().get() + 2
+    );
+    let detached = after.node(style).unwrap();
+    assert_eq!(detached.parent(), None);
+    assert!(detached.as_style().unwrap().sheet().unwrap().is_none());
+    assert!(original.node(style).unwrap().parent().is_some());
+    let latest = styles.snapshot(root).unwrap().unwrap();
+    assert_eq!(latest.sheets(), std::slice::from_ref(retained));
+    assert!(latest.sheet(retained).unwrap().inputs().owner.is_some());
+    assert!(latest.sheet(removed.id()).unwrap().inputs().owner.is_none());
+    assert_eq!(latest.revision().value(), sheets.revision().value() + 1);
+    assert_eq!(sheets.sheets().len(), 2);
+    assert!(sheets.sheet(removed.id()).unwrap().inputs().owner.is_some());
 }
 
 pub(super) fn form_reset_releases_its_lock_after_object_activity_refusal() {

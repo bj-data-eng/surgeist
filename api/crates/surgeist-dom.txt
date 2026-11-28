@@ -1400,6 +1400,8 @@ impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::hosted::DomHo
 pub fn surgeist_dom::hosted::DomHostedError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::hosted::sheet::DomHostedSheetConstructionError
 pub fn surgeist_dom::hosted::sheet::DomHostedSheetConstructionError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
+impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
 impl core::error::Error for surgeist_dom::hosted::DomHostedError
 pub fn surgeist_dom::hosted::DomHostedError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::hosted::DomHostedError
@@ -3042,6 +3044,18 @@ pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequ
 pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest::global(self) -> surgeist_dom::hosted::DomHostedGlobalId
 pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest::operation(self) -> surgeist_dom::source::DomSourceOperationId
 pub const fn surgeist_dom::source::attribute::DomSourceAttributeVerificationRequest::sink(self) -> surgeist_dom::source::attribute::DomSourceAttributeSink
+pub enum surgeist_dom::source::DomFormResetPublicationError
+pub surgeist_dom::source::DomFormResetPublicationError::Cssom(surgeist_cssom::model::CssomError)
+pub surgeist_dom::source::DomFormResetPublicationError::Dom(surgeist_dom::DomError)
+pub surgeist_dom::source::DomFormResetPublicationError::Hosted(surgeist_dom::hosted::DomHostedError)
+impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::from(error: surgeist_dom::DomError) -> Self
+impl core::convert::From<surgeist_dom::hosted::DomHostedError> for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::from(error: surgeist_dom::hosted::DomHostedError) -> Self
+impl core::error::Error for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_dom::source::DomSourceCleanupCause
 pub surgeist_dom::source::DomSourceCleanupCause::InvariantFailed(surgeist_dom::source::DomSourceInvariantFailure)
 pub surgeist_dom::source::DomSourceCleanupCause::ReceiverRetired
@@ -3079,6 +3093,7 @@ pub surgeist_dom::source::DomSourcePhase::DialogService
 pub surgeist_dom::source::DomSourcePhase::EventFiring
 pub surgeist_dom::source::DomSourcePhase::EventObservation
 pub surgeist_dom::source::DomSourcePhase::EventReceiptAccepted
+pub surgeist_dom::source::DomSourcePhase::FormStylesheets
 pub surgeist_dom::source::DomSourcePhase::FullscreenExitHandoff
 pub surgeist_dom::source::DomSourcePhase::HostedRemovals
 pub surgeist_dom::source::DomSourcePhase::MetaCsp
@@ -3101,6 +3116,7 @@ pub surgeist_dom::source::DomSourceRequest::DialogFocusing(surgeist_dom::focus::
 pub surgeist_dom::source::DomSourceRequest::ElementTaskQueue(surgeist_dom::task::DomSourceElementTaskQueueRequest)
 pub surgeist_dom::source::DomSourceRequest::Event(surgeist_dom::event::DomSourceEventRequest)
 pub surgeist_dom::source::DomSourceRequest::FocusDelegate(surgeist_dom::focus::DomSourceFocusDelegateRequest)
+pub surgeist_dom::source::DomSourceRequest::FormStylesheets(surgeist_dom::source::DomSourceFormStylesheetsRequest)
 pub surgeist_dom::source::DomSourceRequest::FullscreenExitHandoff(surgeist_dom::fullscreen::DomSourceFullscreenExitHandoffRequest)
 pub surgeist_dom::source::DomSourceRequest::HostedChild(surgeist_dom::hosted::child::DomHostedChildRequest)
 pub surgeist_dom::source::DomSourceRequest::HostedRemovals(surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest)
@@ -3278,6 +3294,7 @@ pub const fn surgeist_dom::source::DomSourceFailure::commit(&self) -> &surgeist_
 pub const fn surgeist_dom::source::DomSourceFailure::error(&self) -> &surgeist_dom::DomError
 pub fn surgeist_dom::source::DomSourceFailure::into_parts(self) -> (surgeist_dom::source::DomSourceOperationId, surgeist_dom::DomError, surgeist_dom::DomCommit)
 pub const fn surgeist_dom::source::DomSourceFailure::operation(&self) -> surgeist_dom::source::DomSourceOperationId
+pub struct surgeist_dom::source::DomSourceFormStylesheetsRequest
 pub struct surgeist_dom::source::DomSourceInput<Backing>
 impl core::convert::From<surgeist_dom::source::DomSourceEdit> for surgeist_dom::source::DomSourceInput
 pub fn surgeist_dom::source::DomSourceInput::from(edit: surgeist_dom::source::DomSourceEdit) -> Self
@@ -3375,7 +3392,9 @@ pub fn surgeist_dom::source::DomSourceLease<'_>::finish_returned_custom_element(
 impl surgeist_dom::source::DomSourceLease<'_>
 pub fn surgeist_dom::source::DomSourceLease<'_>::process_meta_csp<P: surgeist_html::internal::security::csp_policy::HtmlMetaCspProcessor>(&mut self, request: surgeist_dom::meta::DomSourceMetaCspRequest, processor: &mut P, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::meta::DomSourceMetaCspError<<P as surgeist_html::internal::security::csp_policy::HtmlMetaCspProcessor>::Error>>
 impl surgeist_dom::source::DomSourceLease<'_>
-pub fn surgeist_dom::source::DomSourceLease<'_>::publish_hosted_child_removals(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals), surgeist_dom::hosted::DomHostedError>
+pub fn surgeist_dom::source::DomSourceLease<'_>::publish_form_stylesheets(&mut self, request: surgeist_dom::source::DomSourceFormStylesheetsRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::source::DomSourceCompletion, surgeist_dom::source::DomFormResetPublicationError>
+impl surgeist_dom::source::DomSourceLease<'_>
+pub fn surgeist_dom::source::DomSourceLease<'_>::publish_hosted_child_removals(&mut self, source: &mut surgeist_dom::hosted::DomHostedSource, request: surgeist_dom::hosted::child::DomSourceHostedRemovalsRequest, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(surgeist_dom::source::DomSourceCompletion, surgeist_dom::hosted::child::DomQueuedSourceHostedRemovals), surgeist_dom::source::DomFormResetPublicationError>
 impl<'dom> surgeist_dom::source::DomSourceLease<'dom>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::accept_dialog_task_queue(&mut self, request: &surgeist_dom::dialog::DomSourceDialogRequest, publication: &mut core::option::Option<surgeist_dom::dialog::DomDialogTaskQueuePublication>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 pub fn surgeist_dom::source::DomSourceLease<'dom>::dialog_task_prior_details<'snapshot>(&self, request: &surgeist_dom::dialog::DomSourceDialogRequest, snapshot: &'snapshot surgeist_dom::DomSnapshot) -> core::result::Result<&'snapshot [surgeist_dom::details::DomDetailsToggleIntention], surgeist_dom::DomError>
@@ -4713,6 +4732,8 @@ impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::installation:
 pub fn surgeist_dom::installation::style::DomParsedHtmlTerminalError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::meta::DomMetaAtomicError
 pub fn surgeist_dom::meta::DomMetaAtomicError::from(value: surgeist_dom::DomError) -> Self
+impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::source::DomFormResetPublicationError
+pub fn surgeist_dom::source::DomFormResetPublicationError::from(error: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::style::inline::DomInlineStyleError
 pub fn surgeist_dom::style::inline::DomInlineStyleError::from(value: surgeist_dom::DomError) -> Self
 impl core::error::Error for surgeist_dom::DomError

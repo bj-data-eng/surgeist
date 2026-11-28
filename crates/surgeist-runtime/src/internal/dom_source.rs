@@ -256,6 +256,23 @@ impl From<DomStyleRuntimeError> for DomSourceRuntimeError {
     }
 }
 
+impl DomSourceRuntimeError {
+    pub(super) fn form_reset_publication(
+        error: surgeist_dom::source::DomFormResetPublicationError,
+    ) -> Self {
+        use surgeist_dom::source::DomFormResetPublicationError;
+        match error {
+            DomFormResetPublicationError::Dom(error) => Self::Dom(error),
+            DomFormResetPublicationError::Hosted(error) => {
+                Self::Hosted(DomHostedRuntimeError::Dom(error))
+            }
+            DomFormResetPublicationError::Cssom(error) => {
+                Self::Style(DomStyleRuntimeError::Cssom(error))
+            }
+        }
+    }
+}
+
 impl From<DomHostedRuntimeError> for DomSourceRuntimeError {
     fn from(error: DomHostedRuntimeError) -> Self {
         Self::Hosted(error)
@@ -1183,8 +1200,13 @@ impl DomSourceRuntime {
                 DomSourceProgress::Request(DomSourceRequest::HostedRemovals(request)) => {
                     let completion = self
                         .hosted
-                        .queue_source_child_removals(lease, request, cancel)
-                        .map_err(DomSourceRuntimeError::Hosted)?;
+                        .queue_source_child_removals(lease, request, cancel)?;
+                    return Ok(DomSourceDriveProgress::Complete(completion));
+                }
+                DomSourceProgress::Request(DomSourceRequest::FormStylesheets(request)) => {
+                    let completion = lease
+                        .publish_form_stylesheets(request, cancel)
+                        .map_err(DomSourceRuntimeError::form_reset_publication)?;
                     return Ok(DomSourceDriveProgress::Complete(completion));
                 }
                 DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {

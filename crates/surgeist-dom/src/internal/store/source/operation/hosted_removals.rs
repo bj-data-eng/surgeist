@@ -32,6 +32,7 @@ pub(super) struct ResetBody {
     start: Option<checkpoint::Checkpoint>,
     form: Key,
     failure: Option<DomError>,
+    pub(super) stylesheets: super::form_stylesheets::Stylesheets,
 }
 
 impl ResetBody {
@@ -44,6 +45,7 @@ impl ResetBody {
             start: Some(draft.source_checkpoint(0, 0, cancel)?),
             form,
             failure: None,
+            stylesheets: super::form_stylesheets::Stylesheets::default(),
         })
     }
 }
@@ -152,6 +154,7 @@ impl Operation {
         if let Some(checkpoint) = body.start.take() {
             checkpoint.restore(&mut self.draft);
             self.hosted_removals = Removals::default();
+            body.stylesheets = super::form_stylesheets::Stylesheets::default();
         }
         let form = body.form;
         let failure = body.failure.clone();
@@ -278,12 +281,17 @@ impl Operation {
         Ok(true)
     }
 
-    pub(super) fn hosted_removal_request(
+    pub(super) fn form_publication_request(
         &mut self,
-    ) -> Result<Option<DomSourceHostedRemovalsRequest>, DomError> {
-        let Some(queue) = self.hosted_removals.queue else {
+    ) -> Result<Option<DomSourceRequest>, DomError> {
+        if self.hosted_removals.queue.is_none()
+            && self
+                .reset_body
+                .as_ref()
+                .is_none_or(|body| body.stylesheets.is_empty())
+        {
             return Ok(None);
-        };
+        }
         if let Some(task) = self
             .draft
             .final_element_tasks
@@ -297,13 +305,18 @@ impl Operation {
                 crate::internal::meta::DomMetaError::DefaultStyleUnsupported,
             ));
         }
-        let request = DomSourceHostedRemovalsRequest {
-            operation: self.id,
-            queue,
-            count: self.hosted_removals.entries.len(),
-        };
-        self.hosted_removals.request = Some(request);
-        Ok(Some(request))
+        if let Some(queue) = self.hosted_removals.queue {
+            let request = DomSourceHostedRemovalsRequest {
+                operation: self.id,
+                queue,
+                count: self.hosted_removals.entries.len(),
+            };
+            self.hosted_removals.request = Some(request);
+            return Ok(Some(DomSourceRequest::HostedRemovals(request)));
+        }
+        Ok(self
+            .form_stylesheets_request()
+            .map(DomSourceRequest::FormStylesheets))
     }
 
     pub(super) fn pending_hosted_removals(&self) -> Option<DomSourceHostedRemovalsRequest> {
@@ -383,7 +396,10 @@ impl DomSourceLease<'_> {
         source: &mut DomHostedSource,
         request: DomSourceHostedRemovalsRequest,
         cancel: &AtomicBool,
-    ) -> Result<(DomSourceCompletion, DomQueuedSourceHostedRemovals), DomHostedError> {
+    ) -> Result<
+        (DomSourceCompletion, DomQueuedSourceHostedRemovals),
+        super::form_stylesheets::DomFormResetPublicationError,
+    > {
         self.dom.validate_hosted_source(source)?;
         let mut operation = self
             .dom
@@ -396,7 +412,7 @@ impl DomSourceLease<'_> {
             || operation.pending_hosted_removals() != Some(request)
         {
             self.dom.source_operation = Some(operation);
-            return Err(DomHostedError::WrongPhase);
+            return Err(DomHostedError::WrongPhase.into());
         }
         let result = operation.publish_form_removals(self.dom, source, request, cancel);
         if result.is_ok() {
@@ -418,11 +434,21 @@ impl Operation {
         source: &DomHostedSource,
         request: DomSourceHostedRemovalsRequest,
         cancel: &AtomicBool,
-    ) -> Result<(DomSourceCompletion, DomQueuedSourceHostedRemovals), DomHostedError> {
-        self.refresh_admission(cancel)?;
-        let input_bytes = self.input_bytes()?;
-        let checkpoint = self.draft.source_checkpoint(input_bytes, 0, cancel)?;
-        let result = self.join_form_removals(dom, source, request, cancel);
+    ) -> Result<
+        (DomSourceCompletion, DomQueuedSourceHostedRemovals),
+        super::form_stylesheets::DomFormResetPublicationError,
+    > {
+        self.refresh_admission(cancel)
+            .map_err(DomHostedError::Dom)?;
+        let input_bytes = self.input_bytes().map_err(DomHostedError::Dom)?;
+        let checkpoint = self
+            .draft
+            .source_checkpoint(input_bytes, 0, cancel)
+            .map_err(DomHostedError::Dom)?;
+        let result = self.with_form_stylesheets(dom, cancel, |op, dom| {
+            op.join_form_removals(dom, source, request, cancel)
+                .map_err(Into::into)
+        });
         if result.is_err() {
             checkpoint.restore(&mut self.draft);
         }
@@ -613,17 +639,7 @@ impl Operation {
             }
         }
         Ok((
-            DomSourceCompletion {
-                operation: self.id,
-                cancelled: self.cancelled,
-                published: std::mem::take(&mut self.historical),
-                commit,
-                installation: None,
-                custom_element_disposition: None,
-                fullscreen_exit_return: None,
-                design_mode_range_disposition: None,
-                dialog_toggle_disposition: None,
-            },
+            self.complete_form_reset(commit),
             DomQueuedSourceHostedRemovals {
                 handoffs: handoffs.values.into_iter(),
                 _charge: handoffs.retained,

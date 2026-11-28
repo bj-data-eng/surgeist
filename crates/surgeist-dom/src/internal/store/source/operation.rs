@@ -16,6 +16,7 @@ pub(crate) mod element_queue;
 pub(in crate::internal::store) mod empty_policy_tests;
 mod failure;
 mod focus;
+pub(crate) mod form_stylesheets;
 mod inline;
 pub(crate) mod meta;
 use inline::{AdvanceError, Execution};
@@ -997,6 +998,8 @@ impl Operation {
                 crate::internal::source::DomSourcePhase::FullscreenExitHandoff
             } else if self.pending_hosted_removals().is_some() {
                 crate::internal::source::DomSourcePhase::HostedRemovals
+            } else if self.pending_form_stylesheets().is_some() {
+                crate::internal::source::DomSourcePhase::FormStylesheets
             } else if self.draft.pending_autofocus().is_some() {
                 crate::internal::source::DomSourcePhase::AutofocusInsertionService
             } else if matches!(self.draft.method.as_ref(), Some(crate::internal::store::method::Frame::DesignMode(frame)) if frame.cursor.action() != surgeist_html::elements::native::HtmlDesignModeAction::Complete)
@@ -2572,6 +2575,11 @@ impl DomSourceLease<'_> {
                 DomSourceRequest::HostedRemovals(request),
             ));
         }
+        if let Some(request) = op.pending_form_stylesheets() {
+            return Ok(DomSourceProgress::Request(
+                DomSourceRequest::FormStylesheets(request),
+            ));
+        }
         if let Some(request) = &op.request
             && op.receipt.is_none()
         {
@@ -2793,6 +2801,28 @@ impl DomSourceLease<'_> {
                 ));
             }
             match result {
+                Err(DomError::StyleCompositionRequired(Action::RemoveAssociatedSheet))
+                    if op.reset_body.is_some() =>
+                {
+                    match op.collect_form_stylesheet(cancel) {
+                        Ok(()) => {
+                            op.started = true;
+                            continue;
+                        }
+                        Err(error) => {
+                            checkpoint.restore(&mut op.draft);
+                            op.restore_external_receipt(external_applied);
+                            op.started = started;
+                            if hosted_removals::unjoined_form_service(&error)
+                                || error == DomError::StyleReceiptMismatch
+                            {
+                                op.stop_form_body(error, cancel)?;
+                                continue;
+                            }
+                            return Err(error.into());
+                        }
+                    }
+                }
                 Err(error)
                     if op.reset_body.is_some()
                         && !matches!(error, DomError::HostedCompositionRequired) =>
@@ -3269,12 +3299,8 @@ impl DomSourceLease<'_> {
                         op.receipt = None;
                         continue;
                     }
-                    match op.hosted_removal_request() {
-                        Ok(Some(request)) => {
-                            return Ok(DomSourceProgress::Request(
-                                DomSourceRequest::HostedRemovals(request),
-                            ));
-                        }
+                    match op.form_publication_request() {
+                        Ok(Some(request)) => return Ok(DomSourceProgress::Request(request)),
                         Ok(None) => {}
                         Err(error) => {
                             checkpoint.restore(&mut op.draft);
@@ -7686,7 +7712,9 @@ pub(in crate::internal::store) mod accounting_tests {
                         }
                         Ok(())
                     }
-                    Ok(DomSourceProgress::Request(DomSourceRequest::Style(_))) => {
+                    Ok(DomSourceProgress::Request(
+                        DomSourceRequest::Style(_) | DomSourceRequest::FormStylesheets(_),
+                    )) => {
                         panic!("Slot assignment has no external Style work")
                     }
                     Ok(DomSourceProgress::Request(
