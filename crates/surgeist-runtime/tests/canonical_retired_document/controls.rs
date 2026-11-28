@@ -8,9 +8,11 @@ use std::sync::atomic::AtomicBool;
 use surgeist_dom::{
     DomBatch, DomCommit, DomError, DomSnapshot,
     document::DomNativeInputPlatform,
+    focus::DomFocusedAreaDesignation,
     form::{DomInputState, DomTextareaReadLimits, DomTextareaState},
     identity::{DocumentId, NodeId},
     limits::DomResource,
+    source::{DomSourceEdit, DomSourceLimits},
 };
 use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html::{
@@ -25,6 +27,7 @@ use surgeist_html::{
         },
     },
 };
+use surgeist_runtime::source::{DomSourceDriveProgress, DomSourceServices};
 
 #[derive(Clone, Copy, Debug)]
 enum Destination {
@@ -470,6 +473,38 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
         finish_setup(&mut fixture, destination);
         let old = fixture.session.snapshot();
         no_dialog_services(&old, node);
+        let usage = fixture.session.dom().usage();
+        for cancelled in [true, false] {
+            let mut refused = DomBatch::new();
+            refused.insert_before(node, parent, None);
+            refused.set_attribute(node, "open", "");
+            if !cancelled {
+                // Both reached Dialog hooks must stay private if a later
+                // command refuses publication of the batch.
+                refused.insert_before(node, node, None);
+            }
+            assert_eq!(
+                fixture
+                    .session
+                    .dom()
+                    .apply(refused, &AtomicBool::new(cancelled))
+                    .unwrap_err(),
+                if cancelled {
+                    DomError::Cancelled
+                } else {
+                    DomError::HierarchyRequest
+                }
+            );
+            let unchanged = fixture.session.snapshot();
+            assert_eq!(unchanged.stamp(), old.stamp());
+            assert_eq!(fixture.session.dom().usage(), usage);
+            assert_eq!(unchanged.node(node).unwrap().parent(), None);
+            assert_eq!(
+                unchanged.node(node).unwrap().attribute(&"open".into()),
+                None
+            );
+            no_dialog_services(&unchanged, node);
+        }
         let mut batch = DomBatch::new();
         batch.insert_before(node, parent, None);
         apply(&mut fixture, batch);
@@ -494,14 +529,61 @@ fn closed_dialog_insert_and_open_hooks_use_actual_retired_inactivity_after_empty
         assert_eq!(current.node(node).unwrap().parent(), Some(parent));
         no_dialog_services(&current, node);
         assert_eq!(current.incomplete_source_operation(), None);
-        assert_eq!(
-            fixture
-                .session
-                .element_task_execution()
-                .pending_tasks(surgeist_dom::task::DomElementTaskSourceKind::DomManipulation)
-                .unwrap(),
-            0
-        );
+        let no_document_services = |snapshot: &DomSnapshot| {
+            let document = snapshot.document(target_document).unwrap();
+            assert_eq!(
+                document.focused_area_designation(),
+                DomFocusedAreaDesignation::KnownNull
+            );
+            let layer = document.top_layer().unwrap();
+            assert!(layer.raw_members().is_empty());
+            assert!(layer.pending_removals().is_empty());
+        };
+        for snapshot in [&old, &inserted, &open, &current] {
+            no_document_services(snapshot);
+        }
+        let mut policy = |_: &surgeist_dom::style::DomStyleSource| None;
+        let mut services = DomSourceServices {
+            meta: None,
+            execution_scope: None,
+            style_policy: &mut policy,
+            url: None,
+        };
+        let mut source = fixture.session.source_execution();
+        for (edit, expected) in [
+            (
+                DomSourceEdit::set_attribute(node, "open", ""),
+                Some("".into()),
+            ),
+            (DomSourceEdit::remove_attribute(node, "open"), None),
+        ] {
+            let progress = source
+                .apply(
+                    &mut fixture.session.dom(),
+                    edit,
+                    DomSourceLimits::new(8_000_000, 1_000_000, 1_000_000, 16, 512, 512, 8),
+                    &mut services,
+                    &cancel(),
+                )
+                .unwrap();
+            assert!(
+                matches!(progress, DomSourceDriveProgress::Complete(_)),
+                "{progress:?}"
+            );
+            let observed = fixture.session.snapshot();
+            assert_eq!(
+                observed.node(node).unwrap().attribute(&"open".into()),
+                expected.as_ref()
+            );
+            assert_eq!(observed.incomplete_source_operation(), None);
+            no_dialog_services(&observed, node);
+            no_document_services(&observed);
+        }
+        use surgeist_dom::task::DomElementTaskSourceKind::{DomManipulation, UserInteraction};
+        let tasks = fixture.session.element_task_execution();
+        for source in [DomManipulation, UserInteraction] {
+            assert_eq!(tasks.pending_tasks(source).unwrap(), 0);
+        }
         assert_eq!(old.node(node).unwrap().parent(), None);
         assert_eq!(
             open.node(node).unwrap().attribute(&"open".into()),
